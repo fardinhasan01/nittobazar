@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,9 @@ import { auth, db, storage } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import AddProduct from './AddProduct';
 import { getProductImageUrl, getPrice } from '@/lib/utils';
+import NotificationSettings from '@/components/admin/NotificationSettings';
+import OrderNotificationBanner from '@/components/admin/OrderNotificationBanner';
+import { useAdminOrderNotifications } from '@/hooks/useAdminOrderNotifications';
 
 interface Order {
   id: string;
@@ -117,6 +120,26 @@ const AdminDashboard = () => {
   });
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
+  const orderCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const openOrderDetails = useCallback((orderId: string) => {
+    setActiveTab('orders');
+    setHighlightedOrderId(orderId);
+    setTimeout(() => {
+      orderCardRefs.current[orderId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  }, []);
+
+  const {
+    settings: notificationSettings,
+    updateSettings: updateNotificationSettings,
+    inAppAlert,
+    dismissAlert,
+    openAlertOrder,
+    sendTestNotification,
+    fcmReady,
+  } = useAdminOrderNotifications(orders, openOrderDetails);
 
   const tagOptions = [
     { value: 'Hot', label: 'Hot 🔥' },
@@ -443,6 +466,13 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f0f4f8] via-[#fdf6f0] to-[#fff] text-[#222]">
+      {inAppAlert && (
+        <OrderNotificationBanner
+          alert={inAppAlert}
+          onView={openAlertOrder}
+          onDismiss={dismissAlert}
+        />
+      )}
       {/* Header */}
       <header className="bg-white/70 backdrop-blur-lg border-b border-premium-200/60 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -545,6 +575,13 @@ const AdminDashboard = () => {
                 </CardContent>
               </Card>
             </div>
+
+            <NotificationSettings
+              settings={notificationSettings}
+              onChange={updateNotificationSettings}
+              onTest={sendTestNotification}
+              fcmReady={fcmReady}
+            />
           </div>
         )}
 
@@ -663,7 +700,18 @@ const AdminDashboard = () => {
             <CardContent>
               <div className="space-y-4">
                 {orders.map((order) => (
-                  <Card key={order.id} className="bg-gray-700/30 border border-gray-600">
+                  <Card
+                    key={order.id}
+                    id={`order-card-${order.id}`}
+                    ref={(el) => {
+                      orderCardRefs.current[order.id] = el;
+                    }}
+                    className={`bg-gray-700/30 border ${
+                      highlightedOrderId === order.id
+                        ? 'border-orange-500 ring-2 ring-orange-400/50'
+                        : 'border-gray-600'
+                    }`}
+                  >
                     <CardContent className="p-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {/* Order Info */}
