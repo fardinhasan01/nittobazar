@@ -120,6 +120,12 @@ export default {
 					800: '#1e293b',
 					900: '#0f172a',
 					950: '#020617',
+				},
+				brand: {
+					orange: '#FF6B00',
+					white: '#FFFFFF',
+					gray: '#F5F5F5',
+					charcoal: '#1A1A1A',
 				}
 			},
 			borderRadius: {

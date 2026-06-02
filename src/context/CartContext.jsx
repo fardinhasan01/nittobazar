@@ -1,5 +1,6 @@
 // ✅ FILE: /src/context/CartContext.jsx
 import React, { useEffect, useState, createContext, useContext } from 'react';
+import { resolveItemImageUrl, PLACEHOLDER_IMAGE } from '@/lib/utils';
 
 const CartContext = createContext();
 
@@ -24,7 +25,16 @@ export const CartProvider = ({ children }) => {
           localStorage.removeItem('cart');
           setCart([]);
         } else {
-          setCart(parsedCart);
+          setCart(
+            parsedCart.map((item) => {
+              const mainImageUrl = resolveItemImageUrl(item);
+              return {
+                ...item,
+                mainImageUrl: mainImageUrl === PLACEHOLDER_IMAGE ? item.mainImageUrl : mainImageUrl,
+                quantity: item.quantity > 0 ? item.quantity : 1,
+              };
+            })
+          );
         }
       } catch (error) {
         console.error('Error parsing cart from localStorage:', error);
@@ -51,7 +61,7 @@ export const CartProvider = ({ children }) => {
       price: normalizedPrice,
       offerPrice: normalizedOffer,
       quantity: 1,
-      mainImageUrl: product.mainImageUrl || product.mainImage || product.imageUrl || product.image || '/placeholder.jpg',
+      mainImageUrl: resolveItemImageUrl(product),
     };
 
     setCart((prev) => {
@@ -60,7 +70,14 @@ export const CartProvider = ({ children }) => {
         // Update quantity if item already exists
         return prev.map(item => 
           item.id === normalized.id 
-            ? { ...item, quantity: item.quantity + 1 }
+            ? { 
+                ...item, 
+                quantity: item.quantity + 1,
+                mainImageUrl:
+                  normalized.mainImageUrl !== PLACEHOLDER_IMAGE
+                    ? normalized.mainImageUrl
+                    : item.mainImageUrl,
+              }
             : item
         );
       } else {

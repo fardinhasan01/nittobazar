@@ -33,6 +33,7 @@ export function getOptimizedImageUrl(
 
   // If it's already a Cloudinary URL, optimize it
   if (imageUrl.includes('cloudinary.com')) {
+    try {
     const url = new URL(imageUrl);
     const pathParts = url.pathname.split('/');
     
@@ -42,15 +43,12 @@ export function getOptimizedImageUrl(
       // Insert quality and format parameters after 'upload'
       const transformations = [];
       
-      if (width && height) {
-        transformations.push(`${crop},w_${width},h_${height}`);
-      } else if (width) {
-        transformations.push(`w_${width}`);
-      } else if (height) {
-        transformations.push(`h_${height}`);
-      }
-      
-      transformations.push(`q_${quality}`, `f_${format}`);
+      const cropMode =
+        crop === 'thumb' ? 'thumb' : crop === 'fill' ? 'fill' : crop === 'scale' ? 'scale' : 'fit';
+      transformations.push(`c_${cropMode}`);
+      if (width) transformations.push(`w_${width}`);
+      if (height) transformations.push(`h_${height}`);
+      transformations.push(quality === 'best' ? 'q_auto:best' : `q_${quality}`, `f_${format}`);
       
       const optimizedPath = [
         ...pathParts.slice(0, uploadIndex + 1),
@@ -59,6 +57,9 @@ export function getOptimizedImageUrl(
       ].join('/');
       
       return `${url.protocol}//${url.host}${optimizedPath}`;
+    }
+    } catch {
+      return imageUrl;
     }
   }
   
@@ -101,13 +102,64 @@ export function getProductImageUrl(
  * @param product - The product object
  * @returns The best available image URL or placeholder
  */
-export function getProductImage(product: any): string {
-  const imageUrl = product.mainImageUrl || 
-    (Array.isArray(product.image) ? product.image[0] : product.image) ||
-    product.imageUrl || 
-    product.mainImage || 
-    product.image;
-  return imageUrl || '/placeholder.jpg';
+export const PLACEHOLDER_IMAGE = '/placeholder.svg';
+
+/** Resolve raw image field from cart/order/product objects */
+export function resolveItemImageUrl(item: Record<string, unknown> | null | undefined): string {
+  if (!item) return PLACEHOLDER_IMAGE;
+
+  const pick = (value: unknown): string => {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    return '';
+  };
+
+  const fromArray = (value: unknown): string => {
+    if (Array.isArray(value) && value.length > 0) {
+      return pick(value[0]);
+    }
+    return '';
+  };
+
+  const url =
+    pick(item.mainImageUrl) ||
+    pick(item.mainImage) ||
+    pick(item.imageUrl) ||
+    fromArray(item.image) ||
+    pick(item.image);
+
+  if (!url || url === '/placeholder.jpg') return PLACEHOLDER_IMAGE;
+  return url;
+}
+
+export function getProductImage(product: Record<string, unknown> | null | undefined): string {
+  return resolveItemImageUrl(product);
+}
+
+/** Use stored product URL as-is (checkout/cart) — avoids broken transforms */
+export function getDisplayImageUrl(
+  imageUrl: string | undefined | null,
+  _size?: 'thumbnail' | 'small' | 'medium' | 'large' | 'full'
+): string {
+  if (!imageUrl || imageUrl.trim() === '' || imageUrl.includes('placeholder')) {
+    return PLACEHOLDER_IMAGE;
+  }
+  return imageUrl.trim();
+}
+
+/** Read image URL from a Firestore product document */
+export function imageUrlFromFirestoreProduct(data: Record<string, unknown> | undefined): string {
+  if (!data) return PLACEHOLDER_IMAGE;
+  return resolveItemImageUrl(data as Record<string, unknown>);
+}
+
+/** Normalize cart line item so checkout always has mainImageUrl */
+export function normalizeCartItem<T extends Record<string, unknown>>(item: T): T & { mainImageUrl: string; quantity: number } {
+  const mainImageUrl = resolveItemImageUrl(item);
+  return {
+    ...item,
+    mainImageUrl,
+    quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
+  };
 }
 
 /**

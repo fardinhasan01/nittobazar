@@ -1,79 +1,56 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Store, List, Search, User } from 'lucide-react';
+import { Home, Store, Grid3X3, ShoppingCart, User } from 'lucide-react';
+import { useCart } from '@/context/CartContext';
 
 const BottomNav = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { cart } = useCart();
+  const cartCount = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
     return location.pathname.startsWith(path);
   };
 
+  const items = [
+    { path: '/', icon: Home, label: 'Home' },
+    { path: '/shop', icon: Store, label: 'Shop' },
+    { path: '/categories', icon: Grid3X3, label: 'Categories' },
+    { path: '/cart', icon: ShoppingCart, label: 'Cart', badge: cartCount },
+    { path: '/account', icon: User, label: 'Account' },
+  ];
+
   return (
-    <div className="fixed bottom-0 left-0 w-full z-50 bg-white/90 backdrop-blur-xl border-t border-orange-200/60 flex justify-between items-center gap-1 px-2 py-3 max-w-screen-sm mx-auto">
-      <button 
-        onClick={() => navigate('/')} 
-        className={`flex flex-col items-center flex-1 py-2 rounded-xl transition-all duration-300 ${
-          isActive('/') 
-            ? 'bg-orange-100 text-orange-700 shadow-lg' 
-            : 'hover:bg-orange-50 text-orange-600'
-        }`}
-      >
-        <Home className={`w-6 h-6 mb-1 ${isActive('/') ? 'text-orange-700' : 'text-orange-500'}`} />
-        <span className="text-xs font-semibold">হোম</span>
-      </button>
-      
-      <button 
-        onClick={() => navigate('/shop')} 
-        className={`flex flex-col items-center flex-1 py-2 rounded-xl transition-all duration-300 ${
-          isActive('/shop') 
-            ? 'bg-orange-100 text-orange-700 shadow-lg' 
-            : 'hover:bg-orange-50 text-orange-600'
-        }`}
-      >
-        <Store className={`w-6 h-6 mb-1 ${isActive('/shop') ? 'text-orange-700' : 'text-orange-500'}`} />
-        <span className="text-xs font-semibold">শপ</span>
-      </button>
-      
-      <button 
-        onClick={() => navigate('/categories')} 
-        className={`flex flex-col items-center flex-1 py-2 rounded-xl transition-all duration-300 ${
-          isActive('/categories') 
-            ? 'bg-orange-100 text-orange-700 shadow-lg' 
-            : 'hover:bg-orange-50 text-orange-600'
-        }`}
-      >
-        <List className={`w-6 h-6 mb-1 ${isActive('/categories') ? 'text-orange-700' : 'text-orange-500'}`} />
-        <span className="text-xs font-semibold">ক্যাটাগরিজ</span>
-      </button>
-      
-      <button 
-        onClick={() => navigate('/shop')} 
-        className={`flex flex-col items-center flex-1 py-2 rounded-xl transition-all duration-300 ${
-          isActive('/search') 
-            ? 'bg-orange-100 text-orange-700 shadow-lg' 
-            : 'hover:bg-orange-50 text-orange-600'
-        }`}
-      >
-        <Search className={`w-6 h-6 mb-1 ${isActive('/search') ? 'text-orange-700' : 'text-orange-500'}`} />
-        <span className="text-xs font-semibold">সার্চ</span>
-      </button>
-      
-      <button 
-        onClick={() => navigate('/admin/login')} 
-        className={`flex flex-col items-center flex-1 py-2 rounded-xl transition-all duration-300 ${
-          isActive('/admin') 
-            ? 'bg-orange-100 text-orange-700 shadow-lg' 
-            : 'hover:bg-orange-50 text-orange-600'
-        }`}
-      >
-        <User className={`w-6 h-6 mb-1 ${isActive('/admin') ? 'text-orange-700' : 'text-orange-500'}`} />
-        <span className="text-xs font-semibold">লগইন</span>
-      </button>
-    </div>
+    <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden glass-nav safe-bottom border-t">
+      <div className="flex justify-around items-center px-2 py-2 max-w-lg mx-auto">
+        {items.map(({ path, icon: Icon, label, badge }) => {
+          const active = isActive(path);
+          return (
+            <button
+              key={path}
+              type="button"
+              onClick={() => navigate(path)}
+              className={`relative flex flex-col items-center flex-1 py-2 rounded-2xl transition-all duration-300 min-h-[48px] justify-center ${
+                active
+                  ? 'text-brand-orange'
+                  : 'text-muted-foreground hover:text-brand-orange'
+              }`}
+            >
+              <Icon className={`w-6 h-6 mb-0.5 ${active ? 'scale-110' : ''} transition-transform duration-300`} />
+              <span className="text-[10px] font-semibold">{label}</span>
+              {badge != null && badge > 0 && (
+                <span className="absolute top-1 right-1/4 translate-x-2 bg-brand-orange text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                  {badge > 9 ? '9+' : badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </nav>
   );
 };
 
-export default BottomNav; 
+export default BottomNav;

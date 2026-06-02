@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, List, ArrowRight, X } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useCart } from '@/context/CartContext';
@@ -15,15 +15,18 @@ import { products as localProducts } from '@/data/products';
 
 const Shop = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { addToCart } = useCart();
   const { toast } = useToast();
 
   const [products, setProducts] = useState<any[]>([]);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('q') || '');
   const [categories, setCategories] = useState<string[]>(['All']);
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategory, setSelectedCategory] = useState(
+    searchParams.get('category') || 'All'
+  );
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
 
@@ -121,8 +124,22 @@ const Shop = () => {
   };
 
   const handleDirectOrder = (product: any) => {
-    addToCart(product);
-    navigate('/checkout');
+    const imageUrl =
+      product.mainImageUrl || product.mainImage || product.imageUrl || product.image;
+    navigate('/checkout', {
+      state: {
+        buyNowItem: {
+          id: product.id,
+          name: product.name,
+          price: product.price ?? product.mainPrice,
+          offerPrice: product.offerPrice,
+          quantity: 1,
+          mainImageUrl: imageUrl,
+          mainImage: imageUrl,
+          imageUrl,
+        },
+      },
+    });
   };
 
   const handleProductClick = (product: any) => {
@@ -135,13 +152,16 @@ const Shop = () => {
     setSelectedProduct(null);
   };
 
+  useEffect(() => {
+    const q = searchParams.get('q');
+    if (q) setSearchTerm(q);
+    const cat = searchParams.get('category');
+    if (cat) setSelectedCategory(cat);
+  }, [searchParams]);
+
   return (
-    <div className="min-h-screen relative overflow-hidden">
-      {/* Animated Background */}
-      <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-orange-50 to-white animate-pulse-slow"></div>
-      
-      {/* Header (ultra compact) */}
-      <div className="bg-gradient-to-r from-orange-50/80 to-orange-100/80 pt-4 pb-5">
+    <div className="min-h-screen relative overflow-hidden bg-brand-gray dark:bg-brand-charcoal pb-8">
+      <div className="bg-gradient-to-r from-brand-orange/10 to-transparent pt-4 pb-5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-2xl md:text-3xl font-black text-orange-700 mb-1 drop-shadow-sm">
             সব পণ্য

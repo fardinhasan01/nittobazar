@@ -6,11 +6,19 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { MapPin, User, Mail, Phone, Truck, AlertCircle, CheckCircle2, CreditCard, Wallet, Shield, Plus, Minus } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { useCart } from '@/context/CartContext';
-import { getPrice, hasValidDiscount } from '@/lib/utils';
+import {
+  getPrice,
+  hasValidDiscount,
+  getProductImage,
+  getDisplayImageUrl,
+  normalizeCartItem,
+  imageUrlFromFirestoreProduct,
+  PLACEHOLDER_IMAGE,
+} from '@/lib/utils';
 
 const Checkout = () => {
   const navigate = useNavigate();
@@ -40,19 +48,66 @@ const Checkout = () => {
   };
 
   useEffect(() => {
-    // Support direct checkout via buyNowItem in location.state
-    if (location.state && location.state.buyNowItem) {
-      setCartItems([location.state.buyNowItem]);
-      toast({
-        title: 'Order Initiated!',
-        description: 'Please confirm your details to complete the order.',
-        variant: 'default',
-      });
-    } else if (cart && cart.length > 0) {
-      setCartItems(cart);
-    } else {
-      setCartItems([]);
-    }
+    let cancelled = false;
+
+    const loadCheckoutItems = async () => {
+      const sourceItems = location.state?.buyNowItem
+        ? [location.state.buyNowItem]
+        : cart?.length > 0
+          ? cart
+          : [];
+
+      if (sourceItems.length === 0) {
+        setCartItems([]);
+        return;
+      }
+
+      if (location.state?.buyNowItem) {
+        toast({
+          title: 'Order Initiated!',
+          description: 'Please confirm your details to complete the order.',
+          variant: 'default',
+        });
+      }
+
+      const hydrated = await Promise.all(
+        sourceItems.map(async (item) => {
+          const normalized = normalizeCartItem(item);
+
+          if (!item?.id) {
+            return normalized;
+          }
+
+          try {
+            const snap = await getDoc(doc(db, 'products', String(item.id)));
+            if (snap.exists()) {
+              const imageUrl = imageUrlFromFirestoreProduct(snap.data());
+              if (imageUrl !== PLACEHOLDER_IMAGE) {
+                return normalizeCartItem({
+                  ...normalized,
+                  mainImageUrl: imageUrl,
+                  mainImage: imageUrl,
+                  imageUrl,
+                });
+              }
+            }
+          } catch (err) {
+            console.error('Failed to load product image:', item.id, err);
+          }
+
+          return normalized;
+        })
+      );
+
+      if (!cancelled) {
+        setCartItems(hydrated);
+      }
+    };
+
+    loadCheckoutItems();
+    return () => {
+      cancelled = true;
+    };
   }, [cart, location.state, toast]);
 
   const getDeliveryCharge = (area) => {
@@ -149,7 +204,7 @@ const Checkout = () => {
           name: String(item.name || ''),
           price: Number(price || 0),
           quantity: Number(item.quantity || 1),
-          mainImageUrl: String(item.mainImageUrl || ''),
+          mainImageUrl: getProductImage(item),
         };
       });
       const orderData = {
@@ -169,7 +224,7 @@ const Checkout = () => {
           name: String(item.name || ''),
           price: Number(getPrice(item) || 0),
           quantity: Number(item.quantity || 1),
-          mainImageUrl: String(item.mainImageUrl || ''),
+          mainImageUrl: getProductImage(item),
         })) ?? [],
         paymentMethod: formData.paymentMethod || 'cod',
         bkashNumber: formData.paymentMethod === 'bkash' ? (formData.bkashNumber || '') : null,
@@ -407,19 +462,19 @@ const Checkout = () => {
                     
                     return (
                       <div key={item.id} className="flex items-center space-x-3 p-3 bg-orange-50 rounded-lg">
-                        <div className="w-14 h-14 bg-white rounded-lg flex-shrink-0 overflow-hidden">
+                        <div className="w-14 h-14 bg-white rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center">
                           <img
-                            src={
-                              item.mainImageUrl ||
-                              (Array.isArray(item.image) ? item.image[0] : item.image) ||
-                              "/placeholder.jpg"
-                            }
-                            alt={item.name}
-                            className="w-full h-full object-contain"
+                            src={getDisplayImageUrl(item.mainImageUrl || getProductImage(item))}
+                            alt={item.name || 'Product'}
+                            className="w-full h-full object-contain p-0.5"
                             loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
-                              target.src = '/placeholder.jpg';
+                              if (!target.src.endsWith(PLACEHOLDER_IMAGE)) {
+                                target.src = PLACEHOLDER_IMAGE;
+                              }
                               target.onerror = null;
                             }}
                           />

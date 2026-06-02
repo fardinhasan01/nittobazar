@@ -1,152 +1,190 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ShoppingCart, User, Menu, X, Home, Store, List, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import {
+  ShoppingCart,
+  User,
+  Menu,
+  Search,
+  Heart,
+  Moon,
+  Sun,
+  Shield,
+} from 'lucide-react';
 import { useCart } from '@/context/CartContext';
+import { useWishlist } from '@/context/WishlistContext';
+import { useTheme } from '@/context/ThemeContext';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 const Header = () => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const { cart } = useCart();
+  const { wishlist } = useWishlist();
+  const { theme, toggleTheme } = useTheme();
+  const navigate = useNavigate();
 
-  const cartItemCount = cart?.length || 0;
+  const cartCount = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
+  const wishlistCount = wishlist.length;
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/shop?q=${encodeURIComponent(searchQuery.trim())}`);
+      setMobileSearchOpen(false);
+    }
+  };
 
   return (
-    <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md shadow-md border-b border-premium-200/60">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <Link to="/" className="flex items-center space-x-3 group">
-            <div className="relative">
-              <img 
-                src="/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png" 
-                alt="AB Gadgets Logo" 
-                className="w-12 h-12 rounded-xl shadow-lg transform group-hover:scale-110 transition-all duration-300 group-hover:rotate-3"
-                style={{
-                  filter: 'drop-shadow(0 0 20px rgba(34,197,94,0.25))'
-                }}
-              />
-              <div className="absolute inset-0 bg-premium-400/15 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-premium-600 to-emerald-600 bg-clip-text text-transparent font-['Poppins']">
+    <header
+      className={`sticky top-0 z-50 transition-all duration-300 ${
+        scrolled ? 'glass-nav shadow-md' : 'bg-white dark:bg-brand-charcoal border-b border-transparent'
+      }`}
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between h-14 md:h-16 gap-3">
+          <Link to="/" className="flex items-center gap-2 shrink-0 group">
+            <img
+              src="/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png"
+              alt="AB Gadgets"
+              className="w-9 h-9 md:w-10 md:h-10 rounded-xl shadow-sm group-hover:scale-105 transition-transform duration-300"
+            />
+            <div className="hidden sm:block">
+              <span className="text-sm md:text-base font-bold text-brand-charcoal dark:text-white leading-none">
                 AB GADGETS
-              </h1>
-              <p className="text-xs text-premium-700 font-medium -mt-1 font-['Inter']">Premium Gadgets</p>
+              </span>
             </div>
           </Link>
-          
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-1">
-            <Link 
-              to="/" 
-              className="flex items-center px-4 py-2 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 group font-['Inter']"
-            >
-              <Home className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform duration-300" />
-              Home
-            </Link>
-            <Link 
-              to="/shop" 
-              className="flex items-center px-4 py-2 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 group font-['Inter']"
-            >
-              <Store className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform duration-300" />
-              Shop
-            </Link>
-            <Link 
-              to="/categories" 
-              className="flex items-center px-4 py-2 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 group font-['Inter']"
-            >
-              <List className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform duration-300" />
-              Categories
-            </Link>
-            <Link 
-              to="/cart" 
-              className="flex items-center px-4 py-2 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 group relative font-['Inter']"
-            >
-              <ShoppingCart className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform duration-300" />
-              Cart
-              {cartItemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold animate-bounce">
-                  {cartItemCount}
-                </span>
-              )}
-            </Link>
-            <Link 
-              to="/admin/login" 
-              className="flex items-center px-4 py-2 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 group font-['Inter']"
-            >
-              <User className="w-4 h-4 mr-2 group-hover:scale-110 transition-transform duration-300" />
-              Admin
-            </Link>
-          </nav>
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden">
+          <form
+            onSubmit={handleSearch}
+            className="hidden md:flex flex-1 max-w-md mx-4"
+          >
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search gadgets..."
+                className="pl-10 h-10 rounded-2xl bg-brand-gray dark:bg-white/10 border-0 focus-visible:ring-brand-orange"
+              />
+            </div>
+          </form>
+
+          <div className="flex items-center gap-1 sm:gap-2">
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="text-premium-700 hover:text-premium-800 hover:bg-premium-50 rounded-xl transition-all duration-300"
+              className="md:hidden rounded-xl h-10 w-10"
+              onClick={() => setMobileSearchOpen(!mobileSearchOpen)}
+              aria-label="Search"
             >
-              {isMenuOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
+              <Search className="w-5 h-5" />
             </Button>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className="rounded-xl h-10 w-10 hidden sm:flex"
+              aria-label="Toggle theme"
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </Button>
+
+            <Link to="/account" className="hidden sm:flex">
+              <Button variant="ghost" size="icon" className="rounded-xl h-10 w-10 relative" aria-label="Wishlist">
+                <Heart className="w-5 h-5" />
+                {wishlistCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-brand-orange text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                    {wishlistCount}
+                  </span>
+                )}
+              </Button>
+            </Link>
+
+            <Link to="/cart">
+              <Button variant="ghost" size="icon" className="rounded-xl h-10 w-10 relative" aria-label="Cart">
+                <ShoppingCart className="w-5 h-5" />
+                {cartCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-brand-orange text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                    {cartCount}
+                  </span>
+                )}
+              </Button>
+            </Link>
+
+            <Link to="/admin/login" className="hidden md:flex">
+              <Button variant="ghost" size="icon" className="rounded-xl h-10 w-10" aria-label="Admin login">
+                <Shield className="w-5 h-5" />
+              </Button>
+            </Link>
+
+            <Link to="/account" className="hidden md:flex">
+              <Button variant="ghost" size="icon" className="rounded-xl h-10 w-10" aria-label="Account">
+                <User className="w-5 h-5" />
+              </Button>
+            </Link>
+
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden rounded-xl h-10 w-10" aria-label="Menu">
+                  <Menu className="w-5 h-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[280px]">
+                <nav className="flex flex-col gap-1 mt-8">
+                  {[
+                    { to: '/', label: 'Home' },
+                    { to: '/shop', label: 'Shop' },
+                    { to: '/categories', label: 'Categories' },
+                    { to: '/cart', label: 'Cart' },
+                    { to: '/account', label: 'My Account' },
+                    { to: '/admin/login', label: 'Admin Login' },
+                  ].map((item) => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className="px-4 py-3 rounded-xl font-medium hover:bg-brand-gray dark:hover:bg-white/10 transition-colors"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={toggleTheme}
+                    className="px-4 py-3 rounded-xl font-medium text-left hover:bg-brand-gray dark:hover:bg-white/10 flex items-center gap-2"
+                  >
+                    {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+                    {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                  </button>
+                </nav>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
 
-        {/* Mobile Navigation Menu */}
-        {isMenuOpen && (
-          <div className="md:hidden bg-white/95 backdrop-blur-md rounded-xl shadow-lg border border-premium-200/60 mb-4 animate-slide-down">
-            <div className="px-4 py-2 space-y-1">
-              <Link 
-                to="/" 
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center px-4 py-3 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 font-['Inter']"
-              >
-                <Home className="w-4 h-4 mr-3" />
-                Home
-              </Link>
-              <Link 
-                to="/shop" 
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center px-4 py-3 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 font-['Inter']"
-              >
-                <Store className="w-4 h-4 mr-3" />
-                Shop
-              </Link>
-              <Link 
-                to="/categories" 
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center px-4 py-3 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 font-['Inter']"
-              >
-                <List className="w-4 h-4 mr-3" />
-                Categories
-              </Link>
-              <Link 
-                to="/cart" 
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center px-4 py-3 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 relative font-['Inter']"
-              >
-                <ShoppingCart className="w-4 h-4 mr-3" />
-                Cart
-                {cartItemCount > 0 && (
-                  <span className="ml-auto bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-bold">
-                    {cartItemCount}
-                  </span>
-                )}
-              </Link>
-              <Link 
-                to="/admin/login" 
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center px-4 py-3 rounded-xl text-premium-700 hover:text-premium-800 text-sm font-medium transition-all duration-300 hover:bg-premium-50 font-['Inter']"
-              >
-                <User className="w-4 h-4 mr-3" />
-                Admin
-              </Link>
+        {mobileSearchOpen && (
+          <form onSubmit={handleSearch} className="md:hidden pb-3 animate-fade-up">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search gadgets..."
+                className="pl-10 h-11 rounded-2xl bg-brand-gray dark:bg-white/10"
+                autoFocus
+              />
             </div>
-          </div>
+          </form>
         )}
       </div>
     </header>
