@@ -126,8 +126,8 @@ const Account = () => {
           <Card className="glass-card border-0">
             <CardContent className="p-4 space-y-3 text-sm">
               <p className="font-semibold">Contact Support</p>
-              <p className="text-muted-foreground">Phone: 01706003435</p>
-              <p className="text-muted-foreground">Email: saifuldipu8@gmail.com</p>
+              <p className="text-muted-foreground">Phone: 01346-405590</p>
+              <p className="text-muted-foreground">Email: hmhasibulhasan1@gmail.com</p>
               {recent.length > 0 && (
                 <p className="text-muted-foreground pt-2 border-t">
                   {recent.length} recently viewed products saved locally
