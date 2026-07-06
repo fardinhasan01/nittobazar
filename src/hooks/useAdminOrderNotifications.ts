@@ -92,13 +92,25 @@ export function useAdminOrderNotifications(
   }, [searchParams, setSearchParams, onOpenOrder]);
 
   useEffect(() => {
-    const onSwMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'OPEN_ORDER' && event.data.orderId) {
-        onOpenOrder(event.data.orderId);
-      }
+    let cancelled = false;
+    let removeSwListener: (() => void) | undefined;
+
+    void import('@capacitor/core').then(({ Capacitor }) => {
+      if (cancelled || Capacitor.isNativePlatform()) return;
+      const onSwMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'OPEN_ORDER' && event.data.orderId) {
+          onOpenOrder(event.data.orderId);
+        }
+      };
+      navigator.serviceWorker?.addEventListener('message', onSwMessage);
+      removeSwListener = () =>
+        navigator.serviceWorker?.removeEventListener('message', onSwMessage);
+    });
+
+    return () => {
+      cancelled = true;
+      removeSwListener?.();
     };
-    navigator.serviceWorker?.addEventListener('message', onSwMessage);
-    return () => navigator.serviceWorker?.removeEventListener('message', onSwMessage);
   }, [onOpenOrder]);
 
   // Register FCM when admin is authenticated
@@ -117,21 +129,28 @@ export function useAdminOrderNotifications(
       setSettings(s);
       await syncNotificationSettingsToFirestore(user.uid, s);
 
+      const { Capacitor } = await import('@capacitor/core');
+      const isNative = Capacitor.isNativePlatform();
+
       await initNativePushListeners(user.uid, {
         onOpenOrder: onOpenOrder,
         onForegroundOrder: handleNewOrder,
       });
-      const token = await registerWebFcmToken(user.uid);
-      setFcmReady(!!token || s.enabled);
 
-      const unsubPromise = listenForegroundMessages((payload) => {
-        const orderId = payload.data?.orderId;
-        if (!orderId) return;
-        handleNewOrder(orderId, payload.data);
-      });
-      unsubPromise.then((unsub) => {
-        unsubForeground = unsub;
-      });
+      let token: string | null = null;
+      if (!isNative) {
+        token = await registerWebFcmToken(user.uid);
+        const unsubPromise = listenForegroundMessages((payload) => {
+          const orderId = payload.data?.orderId;
+          if (!orderId) return;
+          handleNewOrder(orderId, payload.data);
+        });
+        unsubPromise.then((unsub) => {
+          unsubForeground = unsub;
+        });
+      }
+
+      setFcmReady(isNative ? s.enabled : !!token);
     });
 
     return () => {
@@ -174,7 +193,10 @@ export function useAdminOrderNotifications(
     if (userRef.current) {
       await syncNotificationSettingsToFirestore(userRef.current.uid, next);
       if (next.enabled) {
-        await registerWebFcmToken(userRef.current.uid);
+        const { Capacitor } = await import('@capacitor/core');
+        if (!Capacitor.isNativePlatform()) {
+          await registerWebFcmToken(userRef.current.uid);
+        }
         await initNativePushListeners(userRef.current.uid, {
           onOpenOrder,
           onForegroundOrder: handleNewOrder,
@@ -193,20 +215,28 @@ export function useAdminOrderNotifications(
   }, [inAppAlert, onOpenOrder]);
 
   const sendTestNotification = useCallback(async () => {
-    if (!('Notification' in window)) return;
-    if (Notification.permission !== 'granted') {
-      await Notification.requestPermission();
-    }
     const orderId = orders[0]?.id || 'test';
     handleNewOrder(orderId, {
       customerName: 'Test Customer',
       amount: '999',
       phoneNumber: '01700000000',
     });
+
+    try {
+      const { Capacitor } = await import('@capacitor/core');
+      if (Capacitor.isNativePlatform()) return;
+    } catch {
+      // web only below
+    }
+
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') {
+      await Notification.requestPermission();
+    }
     if (Notification.permission === 'granted') {
       new Notification('🛒 New Order Received', {
         body: 'Customer: Test Customer | Amount: ৳999 | Order ID: #TEST',
-        icon: '/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png',
+        icon: '/logo.png',
         tag: 'test-order',
       });
     }

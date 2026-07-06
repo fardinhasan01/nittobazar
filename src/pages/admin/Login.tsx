@@ -20,6 +20,15 @@ const AdminLogin = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    document.documentElement.classList.add('admin-route');
+    document.body.classList.add('admin-route');
+    return () => {
+      document.documentElement.classList.remove('admin-route');
+      document.body.classList.remove('admin-route');
+    };
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         navigate('/admin/dashboard');
@@ -58,7 +67,7 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f4f8] via-[#fdf6f0] to-[#fff] text-[#222] flex items-center justify-center">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-[#f0f4f8] via-[#fdf6f0] to-[#fff] text-[#222] flex items-center justify-center overflow-x-hidden safe-top safe-bottom px-3">
       {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-4 -left-4 w-72 h-72 bg-blue-200/20 rounded-full blur-3xl animate-pulse"></div>
@@ -70,13 +79,13 @@ const AdminLogin = () => {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
             <img 
-              src="/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png" 
-              alt="AB Gadgets Logo" 
+              src="/logo.png" 
+              alt="নিত্য বাজার Logo" 
               className="w-16 h-16 mr-3 rounded-lg shadow-2xl transform hover:scale-110 transition-transform duration-300"
             />
           </div>
-          <Link to="/" className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-            AB GADGETS
+          <Link to="/" className="text-3xl font-bold bg-gradient-to-r from-green-600 to-emerald-500 bg-clip-text text-transparent">
+            নিত্য বাজার
           </Link>
           <p className="text-gray-600 mt-2">Admin Portal</p>
         </div>
@@ -103,7 +112,7 @@ const AdminLogin = () => {
                     value={formData.email}
                     onChange={handleInputChange}
                     required
-                    className="pl-10 bg-white border-blue-200 text-[#222] focus:border-blue-400"
+                    className="pl-10 min-h-11 bg-white border-blue-200 text-[#222] focus:border-blue-400 text-base"
                     placeholder="Enter your admin email"
                   />
                 </div>
@@ -120,13 +129,14 @@ const AdminLogin = () => {
                     value={formData.password}
                     onChange={handleInputChange}
                     required
-                    className="pl-10 pr-10 bg-white border-blue-200 text-[#222] focus:border-blue-400"
+                    className="pl-10 pr-12 min-h-11 bg-white border-blue-200 text-[#222] focus:border-blue-400 text-base"
                     placeholder="Enter your password"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-300"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 min-h-11 min-w-11 flex items-center justify-center touch-manipulation"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -136,7 +146,7 @@ const AdminLogin = () => {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-blue-200 to-cyan-200 hover:from-blue-300 hover:to-cyan-300 text-[#222] py-3 rounded-lg font-semibold transition-all duration-300"
+                className="w-full min-h-12 touch-manipulation bg-gradient-to-r from-blue-200 to-cyan-200 hover:from-blue-300 hover:to-cyan-300 text-[#222] py-3 rounded-lg font-semibold transition-all duration-300"
               >
                 {isLoading ? 'Signing In...' : 'Sign In'}
               </Button>

@@ -1,27 +1,27 @@
-const { onDocumentCreated } = require('firebase-functions/v2/firestore');
+const functions = require('firebase-functions');
 const { initializeApp } = require('firebase-admin/app');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getDatabase, ServerValue } = require('firebase-admin/database');
 const { getMessaging } = require('firebase-admin/messaging');
 
 initializeApp();
 
-const db = getFirestore();
+const database = getDatabase();
 
 /**
  * Collect FCM tokens from all admin devices (respects per-admin enabled setting).
  */
 async function collectAdminTokens() {
-  const snap = await db.collection('adminFcmTokens').get();
+  const snap = await database.ref('admins').once('value');
+  const admins = snap.val() || {};
   const tokenToUid = new Map();
 
-  snap.forEach((docSnap) => {
-    const data = docSnap.data() || {};
-    if (data.settings?.enabled === false) return;
+  Object.entries(admins).forEach(([uid, data]) => {
+    if (!data || data.settings?.enabled === false) return;
 
-    const entries = data.tokens || [];
-    entries.forEach((entry) => {
+    const tokens = data.tokens || {};
+    Object.values(tokens).forEach((entry) => {
       const token = typeof entry === 'string' ? entry : entry?.token;
-      if (token) tokenToUid.set(token, docSnap.id);
+      if (token) tokenToUid.set(token, uid);
     });
   });
 
@@ -49,28 +49,28 @@ async function removeInvalidTokens(tokenToUid, responses, tokens) {
   });
 
   for (const [uid, badSet] of invalidByUid) {
-    const ref = db.collection('adminFcmTokens').doc(uid);
-    const doc = await ref.get();
-    const entries = doc.data()?.tokens || [];
-    const filtered = entries.filter((entry) => {
-      const t = typeof entry === 'string' ? entry : entry?.token;
-      return t && !badSet.has(t);
+    const ref = database.ref(`admins/${uid}/tokens`);
+    const snap = await ref.once('value');
+    const entries = snap.val() || {};
+    const filtered = {};
+
+    Object.entries(entries).forEach(([deviceId, entry]) => {
+      const token = typeof entry === 'string' ? entry : entry?.token;
+      if (token && !badSet.has(token)) {
+        filtered[deviceId] = entry;
+      }
     });
-    await ref.update({
-      tokens: filtered,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+
+    await ref.set(filtered);
+    await database.ref(`admins/${uid}/updatedAt`).set(ServerValue.TIMESTAMP);
   }
 }
 
-exports.notifyAdminsOnNewOrder = onDocumentCreated(
-  {
-    document: 'orders/{orderId}',
-    region: 'asia-south1',
-  },
-  async (event) => {
-    const orderId = event.params.orderId;
-    const order = event.data?.data();
+exports.notifyAdminsOnNewOrder = functions.database
+  .ref('orders/{orderId}')
+  .onCreate(async (snapshot, context) => {
+    const orderId = context.params.orderId;
+    const order = snapshot.val();
     if (!order) return null;
 
     if (order.notificationSent === true) {
@@ -81,18 +81,17 @@ exports.notifyAdminsOnNewOrder = onDocumentCreated(
     const customerName =
       `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || 'Customer';
     const phoneNumber = String(customer.phone || '');
-    const total =
-      order.pricing?.total ?? order.totalPrice ?? 0;
+    const total = order.pricing?.total ?? order.totalPrice ?? 0;
     const orderNumber = String(order.orderNumber || orderId);
     const orderStatus = String(order.status || 'pending');
     const timestamp = String(order.orderDate || new Date().toISOString());
 
     const { tokens, tokenToUid } = await collectAdminTokens();
     if (tokens.length === 0) {
-      await event.data.ref.set(
-        { notificationSent: true, notificationSkippedReason: 'no_admin_tokens' },
-        { merge: true }
-      );
+      await snapshot.ref.update({
+        notificationSent: true,
+        notificationSkippedReason: 'no_admin_tokens',
+      });
       return null;
     }
 
@@ -127,7 +126,7 @@ exports.notifyAdminsOnNewOrder = onDocumentCreated(
         notification: {
           title: '🛒 New Order Received',
           body,
-          icon: '/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png',
+          icon: '/logo.png',
         },
         fcmOptions: {
           link: `/admin/dashboard?orderId=${orderId}`,
@@ -137,14 +136,10 @@ exports.notifyAdminsOnNewOrder = onDocumentCreated(
 
     await removeInvalidTokens(tokenToUid, response.responses, tokens);
 
-    await event.data.ref.set(
-      {
-        notificationSent: true,
-        notificationSentAt: FieldValue.serverTimestamp(),
-      },
-      { merge: true }
-    );
+    await snapshot.ref.update({
+      notificationSent: true,
+      notificationSentAt: ServerValue.TIMESTAMP,
+    });
 
     return { successCount: response.successCount, failureCount: response.failureCount };
-  }
-);
+  });

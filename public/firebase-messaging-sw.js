@@ -4,12 +4,14 @@ importScripts('https://www.gstatic.com/firebasejs/11.9.1/firebase-app-compat.js'
 importScripts('https://www.gstatic.com/firebasejs/11.9.1/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'AIzaSyCngkkSssUDBlFV_bTa4F1eXwKZTmytDsk',
-  authDomain: 'ab-gadgets-prime.firebaseapp.com',
-  projectId: 'ab-gadgets-prime',
-  storageBucket: 'ab-gadgets-prime.appspot.com',
-  messagingSenderId: '474049729314',
-  appId: '1:474049729314:web:bb3ff1641c749ac95ccb7b',
+  apiKey: "AIzaSyDtMBfb_9ivHVgVzl2nBiu_MZnbFTX-_Q0",
+  authDomain: "nittobazarbd.firebaseapp.com",
+  databaseURL: "https://nittobazarbd-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "nittobazarbd",
+  storageBucket: "nittobazarbd.firebasestorage.app",
+  messagingSenderId: "879013081861",
+  appId: "1:879013081861:web:484b497c48f072abcdfd6c",
+  measurementId: "G-NMHGPTQVQ8"
 });
 
 const messaging = firebase.messaging();
@@ -29,8 +31,8 @@ messaging.onBackgroundMessage((payload) => {
 
   return self.registration.showNotification(title, {
     body,
-    icon: '/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png',
-    badge: '/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png',
+    icon: '/logo.png',
+    badge: '/logo.png',
     tag: orderId ? `order-${orderId}` : 'new-order',
     renotify: false,
     data: { ...data, url: targetUrl },

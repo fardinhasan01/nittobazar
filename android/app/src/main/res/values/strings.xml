@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">AB Gadgets</string>
-    <string name="title_activity_main">AB Gadgets</string>
-    <string name="package_name">com.abgadgets.app</string>
-    <string name="custom_url_scheme">com.abgadgets.app</string>
+    <string name="app_name">নিত্য বাজার</string>
+    <string name="title_activity_main">নিত্য বাজার</string>
+    <string name="package_name">com.nittobazar.app</string>
+    <string name="custom_url_scheme">com.nittobazar.app</string>
 </resources>

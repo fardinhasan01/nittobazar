@@ -2,18 +2,18 @@ import React, { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { db } from '@/lib/firebase';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
-import BottomNav from '@/components/BottomNav';
-// Cloudinary config (use your own .env or config file)
-const CLOUDINARY_CLOUD_NAME = 'ddepldnwo';
-const CLOUDINARY_UPLOAD_PRESET = 'unsigned_upload';
-const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`;
+import { database } from '@/lib/firebase';
+import { push, ref, set } from 'firebase/database';
+import { uploadFileToCloudinary } from '@/lib/cloudinary';
+import MobileFilePicker from '@/components/admin/MobileFilePicker';
+import { Loader2, X } from 'lucide-react';
+import { normalizeString, normalizeStringArray, sanitizeDatabaseValue } from '@/lib/rtdb';
 
-const TAGS = ["Hot", "Exclusive", "Trending"];
+const TAGS = ['Hot', 'Exclusive', 'Trending'];
 const CATEGORIES = [
-  'Gadgets',
+  'General',
   'Headphones',
   'Selfie Sticks',
   'Microphones',
@@ -21,69 +21,19 @@ const CATEGORIES = [
   'Smart Watches',
   'Phone Accessories',
   'Hidden Cameras',
-  'Misc'
+  'Misc',
 ];
 
-type UploadStatus = "idle" | "uploading" | "success" | "error";
+type UploadStatus = 'idle' | 'uploading' | 'success' | 'error';
 
 interface FileWithPreview {
   file: File;
   preview: string;
   url?: string;
   status: UploadStatus;
+  progress?: number;
   error?: string;
 }
-
-const uploadToCloudinary = async (
-  file: File,
-  onProgress?: (percent: number) => void,
-  retryCount = 0
-): Promise<string> => {
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", CLOUDINARY_UPLOAD_URL);
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(Math.round((event.loaded * 100) / event.total));
-      }
-    };
-
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        const response = JSON.parse(xhr.responseText);
-        resolve(response.secure_url);
-      } else if (retryCount < 2) {
-        // Retry up to 2 times
-        setTimeout(() => {
-          uploadToCloudinary(file, onProgress, retryCount + 1)
-            .then(resolve)
-            .catch(reject);
-        }, 1000);
-      } else {
-        reject(new Error("Cloudinary upload failed"));
-      }
-    };
-
-    xhr.onerror = () => {
-      if (retryCount < 2) {
-        setTimeout(() => {
-          uploadToCloudinary(file, onProgress, retryCount + 1)
-            .then(resolve)
-            .catch(reject);
-        }, 1000);
-      } else {
-        reject(new Error("Cloudinary upload failed"));
-      }
-    };
-
-    xhr.send(formData);
-  });
-};
 
 const AddProduct: React.FC = () => {
   const { toast } = useToast();
@@ -91,553 +41,606 @@ const AddProduct: React.FC = () => {
   const [mainPrice, setMainPrice] = useState('');
   const [offerPrice, setOfferPrice] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<string>('Gadgets');
-  const [stock, setStock] = useState<string>('10');
-  const [rating, setRating] = useState<string>('4.5');
-  const [featured, setFeatured] = useState<boolean>(false);
+  const [category, setCategory] = useState('General');
+  const [stock, setStock] = useState('10');
+  const [rating, setRating] = useState('4.5');
+  const [featured, setFeatured] = useState(false);
   const [mainImage, setMainImage] = useState<FileWithPreview | null>(null);
   const [additionalImages, setAdditionalImages] = useState<FileWithPreview[]>([]);
   const [video, setVideo] = useState<FileWithPreview | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [inStock, setInStock] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [overallProgress, setOverallProgress] = useState<number | null>(null);
 
-  // Handlers for file selection
-  const handleMainImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      
-      // Validate file type
-      if (!file.type.startsWith('image/')) {
-        toast({ 
-          title: 'Invalid File Type', 
-          description: 'Please select an image file (JPEG, PNG, GIF, etc.)', 
-          variant: 'destructive' 
-        });
-        return;
-      }
-      
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast({ 
-          title: 'File Too Large', 
-          description: 'Please select an image smaller than 5MB', 
-          variant: 'destructive' 
-        });
-        return;
-      }
-      
-      setMainImage({
-        file,
-        preview: URL.createObjectURL(file),
-        status: "idle",
-      });
+  const parseFiniteNumber = (value: string, fallback = 0) => {
+    const parsed = Number.parseFloat(String(value));
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const parseFiniteInt = (value: string, fallback = 0) => {
+    const parsed = Number.parseInt(String(value), 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const uploadWithTimeout = async <T,>(promise: Promise<T>, label: string, timeoutMs = 180000) => {
+    let timeoutId: number | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`));
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([promise, timeoutPromise]) as T;
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
     }
   };
 
-  const handleAdditionalImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const filesArray = Array.from(e.target.files);
-      const validFiles: FileWithPreview[] = [];
-      
-      for (const file of filesArray) {
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-          toast({ 
-            title: 'Invalid File Type', 
-            description: `${file.name} is not an image file. Please select image files only.`, 
-            variant: 'destructive' 
-          });
-          continue;
-        }
-        
-        // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
-          toast({ 
-            title: 'File Too Large', 
-            description: `${file.name} is too large. Please select images smaller than 5MB.`, 
-            variant: 'destructive' 
-          });
-          continue;
-        }
-        
-        validFiles.push({
-          file,
-          preview: URL.createObjectURL(file),
-          status: "idle" as UploadStatus,
-        });
-      }
-      
-      // Limit to 5 additional images
-      if (validFiles.length + additionalImages.length > 5) {
-        toast({ 
-          title: 'Too Many Images', 
-          description: 'You can upload a maximum of 5 additional images', 
-          variant: 'destructive' 
-        });
-        return;
-      }
-      
-      setAdditionalImages(prev => [...prev, ...validFiles]);
-    }
-  };
-
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      
-      // Validate file type
-      if (!file.type.startsWith('video/')) {
-        toast({ 
-          title: 'Invalid File Type', 
-          description: 'Please select a video file (MP4, MOV, etc.)', 
-          variant: 'destructive' 
-        });
-        return;
-      }
-      
-      // Validate file size (max 50MB)
-      if (file.size > 50 * 1024 * 1024) {
-        toast({ 
-          title: 'File Too Large', 
-          description: 'Please select a video smaller than 50MB', 
-          variant: 'destructive' 
-        });
-        return;
-      }
-      
-      setVideo({
-        file,
-        preview: URL.createObjectURL(file),
-        status: "idle",
-      });
-    }
-  };
-
-  // Tag checkbox handler
-  const handleTagChange = (tag: string) => {
-    setTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+  const markUploadError = (message: string) => {
+    setMainImage((prev) => (prev ? { ...prev, status: 'error', error: message } : prev));
+    setAdditionalImages((prev) =>
+      prev.map((img) =>
+        img.status === 'uploading' ? { ...img, status: 'error', error: message } : img
+      )
     );
+    setVideo((prev) => (prev && prev.status === 'uploading' ? { ...prev, status: 'error', error: message } : prev));
   };
 
-  // Validation
-  const validate = () => {
-    if (!name.trim()) {
-      toast({ title: 'Validation Error', description: 'Product name is required', variant: 'destructive' });
+  const validateImageFile = (file: File): boolean => {
+    if (
+      !file.type.startsWith('image/') &&
+      !file.name.match(/\.(jpe?g|png|gif|webp|avif)$/i)
+    ) {
+      toast({
+        title: 'Invalid file',
+        description: 'Please select an image file.',
+        variant: 'destructive',
+      });
       return false;
     }
-    const mainPriceNum = parseFloat(mainPrice || "0");
-    if (!mainPrice.trim() || isNaN(mainPriceNum) || mainPriceNum <= 0) {
-      toast({ title: 'Validation Error', description: 'Main price must be a positive number', variant: 'destructive' });
-      return false;
-    }
-    if (offerPrice.trim()) {
-      const offerPriceNum = parseFloat(offerPrice || "0");
-      if (isNaN(offerPriceNum) || offerPriceNum <= 0) {
-        toast({ title: 'Validation Error', description: 'Offer price must be a positive number', variant: 'destructive' });
-        return false;
-      }
-      if (offerPriceNum >= mainPriceNum) {
-        toast({ title: 'Validation Error', description: 'Offer price must be less than main price', variant: 'destructive' });
-        return false;
-      }
-    }
-    if (!category.trim()) {
-      toast({ title: 'Validation Error', description: 'Category is required', variant: 'destructive' });
-      return false;
-    }
-    const stockNum = parseInt(stock || '0', 10);
-    if (isNaN(stockNum) || stockNum < 0) {
-      toast({ title: 'Validation Error', description: 'Stock must be a non-negative integer', variant: 'destructive' });
-      return false;
-    }
-    const ratingNum = parseFloat(rating || '0');
-    if (isNaN(ratingNum) || ratingNum < 0 || ratingNum > 5) {
-      toast({ title: 'Validation Error', description: 'Rating must be between 0 and 5', variant: 'destructive' });
-      return false;
-    }
-    if (!mainImage || !mainImage.file) {
-      toast({ title: 'Validation Error', description: 'Main image is required', variant: 'destructive' });
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: 'File too large',
+        description: 'Images must be under 10MB.',
+        variant: 'destructive',
+      });
       return false;
     }
     return true;
   };
 
-  // Upload all files to Cloudinary and return URLs
-  const uploadAllFiles = async (): Promise<{
-    mainImageUrl: string;
-    additionalImageUrls: string[];
-    videoUrl: string | null;
-  }> => {
-    // Main image
-    let mainImageUrl = "";
-    if (mainImage && mainImage.file) {
-      setMainImage((prev) => prev && { ...prev, status: "uploading" });
-      try {
-        mainImageUrl = await uploadToCloudinary(mainImage.file);
-        setMainImage((prev) => prev && { ...prev, url: mainImageUrl, status: "success" });
-      } catch (err) {
-        setMainImage((prev) => prev && { ...prev, status: "error", error: (err as Error).message });
-        throw err;
-      }
-    }
-
-    // Additional images
-    const additionalImageUrls: string[] = [];
-    for (let i = 0; i < additionalImages.length; i++) {
-      setAdditionalImages((prev) =>
-        prev.map((img, idx) =>
-          idx === i ? { ...img, status: "uploading" } : img
-        )
-      );
-      try {
-        const url = await uploadToCloudinary(additionalImages[i].file);
-        additionalImageUrls.push(url);
-        setAdditionalImages((prev) =>
-          prev.map((img, idx) =>
-            idx === i ? { ...img, url, status: "success" } : img
-          )
-        );
-      } catch (err) {
-        setAdditionalImages((prev) =>
-          prev.map((img, idx) =>
-            idx === i ? { ...img, status: "error", error: (err as Error).message } : img
-          )
-        );
-        throw err;
-      }
-    }
-
-    // Video
-    let videoUrl: string | null = null;
-    if (video && video.file) {
-      setVideo((prev) => prev && { ...prev, status: "uploading" });
-      try {
-        videoUrl = await uploadToCloudinary(video.file);
-        setVideo((prev) => prev && { ...prev, url: videoUrl, status: "success" });
-      } catch (err) {
-        setVideo((prev) => prev && { ...prev, status: "error", error: (err as Error).message });
-        throw err;
-      }
-    }
-
-    return { mainImageUrl, additionalImageUrls, videoUrl };
+  const handleMainFiles = (files: File[]) => {
+    const file = files[0];
+    if (!file || !validateImageFile(file)) return;
+    if (mainImage) URL.revokeObjectURL(mainImage.preview);
+    setMainImage({ file, preview: URL.createObjectURL(file), status: 'idle' });
   };
 
-  // Submit handler
+  const handleAdditionalFiles = (files: File[]) => {
+    const valid: FileWithPreview[] = [];
+    for (const file of files) {
+      if (!validateImageFile(file)) continue;
+      valid.push({ file, preview: URL.createObjectURL(file), status: 'idle' });
+    }
+    if (additionalImages.length + valid.length > 5) {
+      toast({
+        title: 'Too many images',
+        description: 'Maximum 5 additional images.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setAdditionalImages((prev) => [...prev, ...valid]);
+  };
+
+  const handleVideoFiles = (files: File[]) => {
+    const file = files[0];
+    if (!file) return;
+    if (!file.type.startsWith('video/') && !file.name.match(/\.(mp4|mov|webm)$/i)) {
+      toast({
+        title: 'Invalid file',
+        description: 'Please select a video file.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      toast({
+        title: 'File too large',
+        description: 'Video must be under 50MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (video) URL.revokeObjectURL(video.preview);
+    setVideo({ file, preview: URL.createObjectURL(file), status: 'idle' });
+  };
+
+  const handleTagChange = (tag: string) => {
+    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+  };
+
+  const validate = () => {
+    if (!name.trim()) {
+      toast({ title: 'Validation', description: 'Product name is required', variant: 'destructive' });
+      return false;
+    }
+    const mainPriceNum = parseFloat(mainPrice);
+    if (!mainPrice.trim() || Number.isNaN(mainPriceNum) || mainPriceNum <= 0) {
+      toast({ title: 'Validation', description: 'Enter a valid main price', variant: 'destructive' });
+      return false;
+    }
+    if (offerPrice.trim()) {
+      const offerPriceNum = parseFloat(offerPrice);
+      if (Number.isNaN(offerPriceNum) || offerPriceNum <= 0 || offerPriceNum >= mainPriceNum) {
+        toast({
+          title: 'Validation',
+          description: 'Offer price must be less than main price',
+          variant: 'destructive',
+        });
+        return false;
+      }
+    }
+    if (!mainImage?.file) {
+      toast({ title: 'Validation', description: 'Main image is required', variant: 'destructive' });
+      return false;
+    }
+    return true;
+  };
+
+  const uploadAllFiles = async () => {
+    console.log('uploadAllFiles() start');
+    let done = 0;
+    const total = 1 + additionalImages.length + (video?.file ? 1 : 0);
+    const tick = () => {
+      done += 1;
+      setOverallProgress(Math.min(100, Math.round((done / total) * 100)));
+    };
+
+    setOverallProgress(0);
+
+    let mainImageUrl = '';
+    if (mainImage?.file) {
+      setMainImage((prev) => prev && { ...prev, status: 'uploading', progress: 0 });
+      console.log('before uploadFileToCloudinary() main image');
+      mainImageUrl = await uploadWithTimeout(
+        uploadFileToCloudinary(mainImage.file, (p) =>
+          setMainImage((prev) => prev && { ...prev, progress: p })
+        ),
+        'Main image upload'
+      );
+      console.log('after uploadFileToCloudinary() main image', mainImageUrl);
+      setMainImage((prev) => prev && { ...prev, url: mainImageUrl, status: 'success', progress: 100 });
+      tick();
+    }
+
+    const additionalImageUrlsPromise = Promise.all(
+      additionalImages.map(async (img, index) => {
+        setAdditionalImages((prev) =>
+          prev.map((item, idx) => (idx === index ? { ...item, status: 'uploading', progress: 0 } : item))
+        );
+        console.log('before uploadFileToCloudinary() additional image', index);
+        const url = await uploadWithTimeout(
+          uploadFileToCloudinary(img.file, (p) =>
+            setAdditionalImages((prev) =>
+              prev.map((item, idx) => (idx === index ? { ...item, progress: p } : item))
+            )
+          ),
+          `Additional image ${index + 1} upload`
+        );
+        console.log('after uploadFileToCloudinary() additional image', index, url);
+        setAdditionalImages((prev) =>
+          prev.map((item, idx) =>
+            idx === index ? { ...item, url, status: 'success', progress: 100 } : item
+          )
+        );
+        tick();
+        return url;
+      })
+    );
+
+    const videoUrlPromise = video?.file
+      ? (async () => {
+          setVideo((prev) => prev && { ...prev, status: 'uploading', progress: 0 });
+          console.log('before uploadFileToCloudinary() video');
+          const url = await uploadWithTimeout(
+            uploadFileToCloudinary(video.file, (p) =>
+              setVideo((prev) => prev && { ...prev, progress: p })
+            ),
+            'Video upload'
+          );
+          console.log('after uploadFileToCloudinary() video', url);
+          setVideo((prev) => prev && { ...prev, url, status: 'success', progress: 100 });
+          tick();
+          return url;
+        })()
+      : Promise.resolve(null);
+
+    const [additionalImageUrls, videoUrl] = await Promise.all([
+      additionalImageUrlsPromise,
+      videoUrlPromise,
+    ]);
+
+    const safeAdditionalImageUrls = additionalImageUrls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
+    const safeMainImageUrl = typeof mainImageUrl === 'string' ? mainImageUrl.trim() : '';
+    const safeVideoUrl = typeof videoUrl === 'string' && videoUrl.trim().length > 0 ? videoUrl.trim() : null;
+
+    console.log('uploadAllFiles() resolved', {
+      mainImageUrl: safeMainImageUrl,
+      additionalImageUrls: safeAdditionalImageUrls,
+      videoUrl: safeVideoUrl,
+    });
+
+    setOverallProgress(100);
+    return { mainImageUrl: safeMainImageUrl, additionalImageUrls: safeAdditionalImageUrls, videoUrl: safeVideoUrl };
+  };
+
+  const resetForm = () => {
+    if (mainImage) URL.revokeObjectURL(mainImage.preview);
+    additionalImages.forEach((img) => URL.revokeObjectURL(img.preview));
+    if (video) URL.revokeObjectURL(video.preview);
+    setName('');
+    setMainPrice('');
+    setOfferPrice('');
+    setDescription('');
+    setCategory('General');
+    setStock('10');
+    setRating('4.5');
+    setFeatured(false);
+    setMainImage(null);
+    setAdditionalImages([]);
+    setVideo(null);
+    setTags([]);
+    setInStock(true);
+    setOverallProgress(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('handleSubmit() start');
     if (!validate()) return;
     setIsSubmitting(true);
-
     try {
-      // 1. Upload files to Cloudinary
       const { mainImageUrl, additionalImageUrls, videoUrl } = await uploadAllFiles();
+      const imageGallery = [mainImageUrl, ...additionalImageUrls].map(normalizeString).filter(Boolean);
+      const mainPriceValue = parseFiniteNumber(mainPrice, 0);
+      const offerPriceValue = offerPrice.trim() ? parseFiniteNumber(offerPrice, NaN) : null;
+      const stockValue = parseFiniteInt(stock, 0);
+      const ratingValue = parseFiniteNumber(rating, 4.5);
 
-      // 2. Save product data to Firestore
+      if (!mainImageUrl) {
+        throw new Error('Main image upload did not return a secure URL');
+      }
+      if (!Number.isFinite(mainPriceValue) || mainPriceValue <= 0) {
+        throw new Error('Main price is invalid');
+      }
+      if (offerPriceValue !== null && (!Number.isFinite(offerPriceValue) || offerPriceValue <= 0 || offerPriceValue >= mainPriceValue)) {
+        throw new Error('Offer price is invalid');
+      }
+      if (!Number.isFinite(stockValue) || stockValue < 0) {
+        throw new Error('Stock is invalid');
+      }
+      if (!Number.isFinite(ratingValue) || ratingValue < 0 || ratingValue > 5) {
+        throw new Error('Rating is invalid');
+      }
+
       const productData = {
-        name: name.trim(),
-        mainPrice: parseFloat(mainPrice || "0"),
-        offerPrice: offerPrice.trim() ? parseFloat(offerPrice || "0") : null,
-        description: description.trim(),
-        category: category.trim(),
-        stock: parseInt(stock || '0', 10),
-        rating: parseFloat(rating || '0'),
+        name: normalizeString(name),
+        mainPrice: mainPriceValue,
+        offerPrice: offerPriceValue,
+        description: normalizeString(description),
+        category: normalizeString(category) || 'General',
+        stock: stockValue,
+        rating: ratingValue,
         featured,
         mainImageUrl,
+        mainImage: mainImageUrl,
+        imageUrl: mainImageUrl,
+        image: mainImageUrl,
+        images: imageGallery,
         additionalImageUrls,
         videoUrl,
+        media: {
+          mainImageUrl,
+          additionalImageUrls,
+          videoUrl,
+        },
         inStock,
-        tags,
-        createdAt: serverTimestamp(),
+        tags: normalizeStringArray(tags),
+        createdAt: Date.now(),
       };
-      await addDoc(collection(db, "products"), productData);
-      toast({ title: '✅ Success', description: 'Product added successfully!' });
 
-      // 3. Reset form
-      setName('');
-      setMainPrice('');
-      setOfferPrice('');
-      setDescription('');
-      setCategory('Gadgets');
-      setStock('10');
-      setRating('4.5');
-      setFeatured(false);
-      setMainImage(null);
-      setAdditionalImages([]);
-      setVideo(null);
-      setTags([]);
-      setInStock(true);
+      const newProductRef = push(ref(database, 'products'));
+      if (!newProductRef.key) {
+        throw new Error('Could not generate a product key');
+      }
+      const productId = newProductRef.key;
+      const productDataForDatabase = sanitizeDatabaseValue({
+        ...productData,
+        id: productId,
+      }) as Record<string, unknown>;
+      if (!productDataForDatabase || Array.isArray(productDataForDatabase)) {
+        throw new Error('Product payload could not be normalized for Realtime Database');
+      }
+
+      const productDataForLog = {
+        ...productDataForDatabase,
+        createdAt: '[timestamp]',
+      };
+
+      console.log('RTDB path:', `products/${productId}`);
+      console.log('RTDB Payload:', JSON.stringify(productDataForLog, null, 2));
+      console.log('before Firestore save');
+      await set(newProductRef, productDataForDatabase);
+      console.log('after Firestore save');
+      toast({ title: 'Success', description: 'Product added successfully!' });
+      resetForm();
     } catch (error) {
+      console.error('Firestore Error:', error);
       console.error('Error adding product:', error);
-      toast({ title: '❌ Error', description: 'Failed to add product. Check console for details.', variant: 'destructive' });
+      markUploadError(error instanceof Error ? error.message : 'Upload failed');
+      toast({
+        title: 'Error',
+        description: 'Failed to upload or save product. Try again.',
+        variant: 'destructive',
+      });
     } finally {
       setIsSubmitting(false);
+      setOverallProgress(null);
     }
   };
 
-  // Remove additional image
-  const removeAdditionalImage = (index: number) => {
-    setAdditionalImages(prev => {
-      const newImages = [...prev];
-      // Revoke object URL to prevent memory leaks
-      URL.revokeObjectURL(newImages[index].preview);
-      newImages.splice(index, 1);
-      return newImages;
-    });
-  };
-
-  // Remove video
-  const removeVideo = () => {
-    if (video) {
-      URL.revokeObjectURL(video.preview);
-      setVideo(null);
-    }
-  };
-
-  // Clear main image
-  const clearMainImage = () => {
-    if (mainImage) {
-      URL.revokeObjectURL(mainImage.preview);
-      setMainImage(null);
-    }
-  };
+  const isBusy = isSubmitting;
 
   return (
-    <>
-      <form onSubmit={handleSubmit} className="space-y-6 bg-white/80 p-6 rounded-2xl border border-premium-200/60 backdrop-blur-lg max-w-4xl mx-auto shadow-xl">
-        <h2 className="text-2xl font-bold text-premium-700 mb-4">Add New Product</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div>
-            <Label className="text-gray-700">Product Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter product name" required className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 mt-1" />
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-5 bg-white/90 p-4 sm:p-6 rounded-2xl border border-premium-200/60 shadow-lg max-w-4xl mx-auto w-full overflow-hidden"
+    >
+      <h2 className="text-xl sm:text-2xl font-bold text-premium-700">Add new product</h2>
+
+      {overallProgress !== null && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-xs text-gray-600">
+            <span>Uploading media…</span>
+            <span>{overallProgress}%</span>
           </div>
-          <div>
-            <Label className="text-gray-700">Main Price (৳)</Label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              pattern="[0-9]*"
-              value={mainPrice}
-              onChange={(e) => setMainPrice(e.target.value)}
-              placeholder="e.g., 1200"
-              required
-              className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-gray-700">Category</Label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-white border border-premium-200 text-[#222] focus:border-premium-400 mt-1 rounded p-2"
-            >
-              {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <Label className="text-gray-700">Stock</Label>
-            <Input
-              type="number"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={stock}
-              onChange={(e) => setStock(e.target.value)}
-              placeholder="e.g., 50"
-              className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-gray-700">Offer Price (৳)</Label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              pattern="[0-9]*"
-              value={offerPrice}
-              onChange={(e) => setOfferPrice(e.target.value)}
-              placeholder="Optional offer price (must be less than main price)"
-              className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 mt-1"
-            />
-            <p className="text-xs text-gray-500 mt-1">Leave empty if no special offer. Must be less than main price.</p>
-          </div>
-          <div>
-            <Label className="text-gray-700">Rating (0 - 5)</Label>
-            <Input
-              type="number"
-              step="0.1"
-              min="0"
-              max="5"
-              value={rating}
-              onChange={(e) => setRating(e.target.value)}
-              placeholder="e.g., 4.5"
-              className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 mt-1"
-            />
-          </div>
-          <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex items-center gap-2 text-gray-700">
-              <input type="checkbox" id="inStock" checked={inStock} onChange={(e) => setInStock(e.target.checked)} className="h-4 w-4 rounded border-premium-200 bg-white text-premium-600 focus:ring-premium-400" />
-              <label htmlFor="inStock" className="cursor-pointer">{inStock ? 'In Stock' : 'Out of Stock'}</label>
-            </div>
-            <div className="flex items-center gap-2 text-gray-700">
-              <input type="checkbox" id="featured" checked={featured} onChange={(e) => setFeatured(e.target.checked)} className="h-4 w-4 rounded border-premium-200 bg-white text-premium-600 focus:ring-premium-400" />
-              <label htmlFor="featured" className="cursor-pointer">Featured</label>
-            </div>
-          </div>
+          <Progress value={overallProgress} className="h-2" />
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <Label>Product name</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="mt-1 min-h-11"
+            disabled={isBusy}
+          />
         </div>
         <div>
-          <Label className="text-gray-700">Description</Label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Short description" rows={3} className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 mt-1 rounded p-2" />
+          <Label>Main price (৳)</Label>
+          <Input
+            inputMode="decimal"
+            value={mainPrice}
+            onChange={(e) => setMainPrice(e.target.value.replace(/[^\d.]/g, ''))}
+            required
+            placeholder="1200"
+            className="mt-1 min-h-11"
+            disabled={isBusy}
+          />
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div>
-            <Label className="text-gray-700">Main Image</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              onChange={handleMainImageChange}
-              required
-              className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-premium-50 file:text-premium-700 hover:file:bg-premium-100 mt-1"
-              disabled={isSubmitting}
-            />
-            {mainImage && (
-              <div className="mt-4">
-                <img
-                  src={mainImage.url || mainImage.preview}
-                  alt="Main Preview"
-                  className="w-32 h-32 object-cover rounded-lg border border-premium-200"
-                />
-                <div className="text-xs mt-1 text-gray-500">
-                  {mainImage.status === "uploading" && "Uploading..."}
-                  {mainImage.status === "success" && "Uploaded"}
-                  {mainImage.status === "error" && (
-                    <span className="text-red-500">Upload failed</span>
-                  )}
-                  {mainImage.url && (
-                    <a
-                      href={mainImage.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block text-premium-600 underline"
-                    >
-                      View on Cloudinary
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <div>
-            <Label className="text-gray-700">Additional Images</Label>
-            <Input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleAdditionalImagesChange}
-              className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-premium-50 file:text-premium-700 hover:file:bg-premium-100 mt-1"
-              disabled={isSubmitting}
-            />
-            <div className="flex gap-2 mt-2 flex-wrap">
-              {additionalImages.map((img, i) => (
-                <div key={i} className="flex flex-col items-center">
-                  <img
-                    src={img.url || img.preview}
-                    className="w-16 h-16 object-cover rounded border border-premium-200"
-                    alt={`Additional preview ${i + 1}`}
-                  />
-                  <div className="text-xs text-gray-500">
-                    {img.status === "uploading" && "Uploading..."}
-                    {img.status === "success" && "Uploaded"}
-                    {img.status === "error" && (
-                      <span className="text-red-500">Upload failed</span>
-                    )}
-                    {img.url && (
-                      <a
-                        href={img.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-premium-600 underline"
-                      >
-                        View
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
+        <div>
+          <Label>Category</Label>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="mt-1 w-full min-h-11 rounded-md border border-input bg-background px-3 text-sm"
+            disabled={isBusy}
+          >
+            {CATEGORIES.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <Label>Stock</Label>
+          <Input
+            inputMode="numeric"
+            value={stock}
+            onChange={(e) => setStock(e.target.value.replace(/\D/g, ''))}
+            className="mt-1 min-h-11"
+            disabled={isBusy}
+          />
+        </div>
+        <div>
+          <Label>Offer price (৳)</Label>
+          <Input
+            inputMode="decimal"
+            value={offerPrice}
+            onChange={(e) => setOfferPrice(e.target.value.replace(/[^\d.]/g, ''))}
+            placeholder="Optional"
+            className="mt-1 min-h-11"
+            disabled={isBusy}
+          />
+        </div>
+        <div>
+          <Label>Rating (0–5)</Label>
+          <Input
+            inputMode="decimal"
+            value={rating}
+            onChange={(e) => setRating(e.target.value.replace(/[^\d.]/g, ''))}
+            className="mt-1 min-h-11"
+            disabled={isBusy}
+          />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-6">
+        <label className="flex items-center gap-3 min-h-11 touch-manipulation cursor-pointer">
+          <input
+            type="checkbox"
+            checked={inStock}
+            onChange={(e) => setInStock(e.target.checked)}
+            className="h-5 w-5"
+            disabled={isBusy}
+          />
+          In stock
+        </label>
+        <label className="flex items-center gap-3 min-h-11 touch-manipulation cursor-pointer">
+          <input
+            type="checkbox"
+            checked={featured}
+            onChange={(e) => setFeatured(e.target.checked)}
+            className="h-5 w-5"
+            disabled={isBusy}
+          />
+          Featured
+        </label>
+      </div>
+
+      <div>
+        <Label>Description</Label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={3}
+          className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[88px]"
+          disabled={isBusy}
+        />
+      </div>
+
+      <MobileFilePicker
+        label="Main image *"
+        accept="image/*"
+        onFiles={handleMainFiles}
+        disabled={isBusy}
+        hint="JPEG, PNG, WebP — max 10MB"
+      />
+      {mainImage && (
+        <div className="relative inline-block">
+          <img
+            src={mainImage.url || mainImage.preview}
+            alt="Main"
+            className="w-28 h-28 object-cover rounded-lg border"
+          />
+          {mainImage.status === 'uploading' && mainImage.progress !== undefined && (
+            <Progress value={mainImage.progress} className="h-1 mt-1 w-28" />
+          )}
+          <button
+            type="button"
+            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 min-h-8 min-w-8 touch-manipulation"
+            onClick={() => {
+              URL.revokeObjectURL(mainImage.preview);
+              setMainImage(null);
+            }}
+            aria-label="Remove main image"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      <MobileFilePicker
+        label="Additional images"
+        accept="image/*"
+        multiple
+        onFiles={handleAdditionalFiles}
+        disabled={isBusy}
+        hint="Up to 5 images"
+      />
+      {additionalImages.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {additionalImages.map((img, i) => (
+            <div key={i} className="relative">
+              <img src={img.url || img.preview} alt="" className="w-16 h-16 object-cover rounded border" />
+              {img.status === 'uploading' && img.progress !== undefined && (
+                <Progress value={img.progress} className="h-1 w-16 mt-0.5" />
+              )}
+              <button
+                type="button"
+                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 touch-manipulation"
+                onClick={() => {
+                  URL.revokeObjectURL(img.preview);
+                  setAdditionalImages((prev) => prev.filter((_, idx) => idx !== i));
+                }}
+                aria-label="Remove image"
+              >
+                <X className="w-3 h-3" />
+              </button>
             </div>
-          </div>
+          ))}
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div>
-            <Label className="text-gray-700">Video (optional)</Label>
-            <Input
-              type="file"
-              accept="video/*"
-              onChange={handleVideoChange}
-              className="w-full bg-white border-premium-200 text-[#222] focus:border-premium-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-premium-50 file:text-premium-700 hover:file:bg-premium-100 mt-1"
-              disabled={isSubmitting}
-            />
-            {video && (
-              <div className="mt-4">
-                <video
-                  src={video.url || video.preview}
-                  controls
-                  className="w-48 rounded border border-premium-200"
-                />
-                <div className="text-xs mt-1 text-gray-500">
-                  {video.status === "uploading" && "Uploading..."}
-                  {video.status === "success" && "Uploaded"}
-                  {video.status === "error" && (
-                    <span className="text-red-500">Upload failed</span>
-                  )}
-                  {video.url && (
-                    <a
-                      href={video.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block text-premium-600 underline"
-                    >
-                      View on Cloudinary
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <div>
-            <Label className="text-gray-700">Tags</Label>
-            <div className="flex gap-4 flex-wrap mt-2 text-gray-700">
-              {TAGS.map((tag) => (
-                <label
-                  key={tag}
-                  className="flex items-center gap-2 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    value={tag}
-                    checked={tags.includes(tag)}
-                    onChange={() => handleTagChange(tag)}
-                    className="h-4 w-4 rounded border-premium-200 bg-white text-premium-600 focus:ring-premium-400"
-                    disabled={isSubmitting}
-                  />
-                  {tag}
-                </label>
-              ))}
-            </div>
-          </div>
+      )}
+
+      <MobileFilePicker
+        label="Video (optional)"
+        accept="video/*"
+        showCamera={false}
+        onFiles={handleVideoFiles}
+        disabled={isBusy}
+        hint="MP4, MOV — max 50MB"
+      />
+      {video && (
+        <div className="space-y-1">
+          <video src={video.url || video.preview} controls className="w-full max-w-xs rounded border" />
+          {video.status === 'uploading' && video.progress !== undefined && (
+            <Progress value={video.progress} className="h-2 max-w-xs" />
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-10 touch-manipulation"
+            onClick={() => {
+              URL.revokeObjectURL(video.preview);
+              setVideo(null);
+            }}
+          >
+            Remove video
+          </Button>
         </div>
-        <Button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-gradient-to-r from-premium-500 to-emerald-600 hover:from-premium-600 hover:to-emerald-700 text-white py-3 rounded-lg font-semibold transition-all duration-300"
-        >
-          {isSubmitting ? "Uploading..." : "Add Product"}
-        </Button>
-      </form>
-      <BottomNav />
-    </>
+      )}
+
+      <div>
+        <Label>Tags</Label>
+        <div className="flex flex-wrap gap-4 mt-2">
+          {TAGS.map((tag) => (
+            <label key={tag} className="flex items-center gap-2 min-h-11 touch-manipulation cursor-pointer">
+              <input
+                type="checkbox"
+                checked={tags.includes(tag)}
+                onChange={() => handleTagChange(tag)}
+                className="h-5 w-5"
+                disabled={isBusy}
+              />
+              {tag}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <Button
+        type="submit"
+        disabled={isBusy}
+        className="w-full min-h-12 text-base touch-manipulation bg-gradient-to-r from-premium-500 to-emerald-600"
+      >
+        {isBusy ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            {overallProgress !== null ? `Uploading ${overallProgress}%…` : 'Saving…'}
+          </>
+        ) : (
+          'Add product'
+        )}
+      </Button>
+    </form>
   );
 };
 

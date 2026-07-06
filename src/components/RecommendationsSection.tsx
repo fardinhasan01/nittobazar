@@ -14,8 +14,8 @@ interface RecommendationsSectionProps {
 
 const RecommendationsSection: React.FC<RecommendationsSectionProps> = ({
   products,
-  title = 'Recommended For You',
-  subtitle = 'Curated picks based on trending tech',
+  title = 'আপনার জন্য বাছাই',
+  subtitle = 'ট্রেন্ডিং টেকের উপর ভিত্তি করে বিশেষ নির্বাচন',
   handleAddToCart,
   handleDirectOrder,
   onProductClick,
@@ -29,8 +29,8 @@ const RecommendationsSection: React.FC<RecommendationsSectionProps> = ({
       <FadeInView>
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center gap-2 mb-1">
-            <Sparkles className="w-5 h-5 text-brand-orange" />
-            <span className="text-xs font-bold uppercase tracking-wider text-brand-orange">AI Picks</span>
+            <Sparkles className="w-5 h-5 text-brand-green" />
+            <span className="text-xs font-bold uppercase tracking-wider text-brand-green">স্মার্ট বাছাই</span>
           </div>
           <h2 className="text-xl font-bold text-brand-charcoal dark:text-white">{title}</h2>
           <p className="text-sm text-muted-foreground mb-6">{subtitle}</p>

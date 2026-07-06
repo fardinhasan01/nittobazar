@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { db } from '@/lib/firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import { database } from '@/lib/firebase';
+import { push, ref, set } from 'firebase/database';
 import { Button } from '@/components/ui/button';
 
 const products = [
@@ -33,17 +33,18 @@ const UploadProducts = () => {
     setStatus('Uploading...');
     try {
       for (const product of products) {
-        await addDoc(collection(db, 'products'), product);
+        const productRef = push(ref(database, 'products'));
+        await set(productRef, { ...product, id: productRef.key });
       }
       setStatus('✅ All products uploaded successfully!');
     } catch (error) {
-      setStatus('❌ Upload failed: ' + error.message);
+      setStatus('❌ Upload failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
   return (
     <div className="max-w-md mx-auto mt-10 p-6 bg-gray-900 rounded-xl text-white">
-      <h2 className="text-xl font-bold mb-4">Upload Products to Firestore</h2>
+      <h2 className="text-xl font-bold mb-4">Upload Products to Realtime Database</h2>
       <Button onClick={handleUpload} className="mb-4">Upload Products</Button>
       {status && <div className="mt-2 text-sm">{status}</div>}
     </div>

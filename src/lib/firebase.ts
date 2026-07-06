@@ -1,22 +1,37 @@
-// src/lib/firebase.ts
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
-import { getAuth } from "firebase/auth"; // ✅ Important
+import { initializeApp } from 'firebase/app';
+import { getDatabase } from 'firebase/database';
+import { getStorage } from 'firebase/storage';
+import {
+  getAuth,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+} from 'firebase/auth';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCngkkSssUDBlFV_bTa4F1eXwKZTmytDsk",
-  authDomain: "ab-gadgets-prime.firebaseapp.com",
-  projectId: "ab-gadgets-prime",
-  storageBucket: "ab-gadgets-prime.appspot.com", // ✅ fixed
-  messagingSenderId: "474049729314",
-  appId: "1:474049729314:web:bb3ff1641c749ac95ccb7b"
+  apiKey: "AIzaSyDtMBfb_9ivHVgVzl2nBiu_MZnbFTX-_Q0",
+  authDomain: "nittobazarbd.firebaseapp.com",
+  databaseURL: "https://nittobazarbd-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "nittobazarbd",
+  storageBucket: "nittobazarbd.firebasestorage.app",
+  messagingSenderId: "879013081861",
+  appId: "1:879013081861:web:484b497c48f072abcdfd6c",
+  measurementId: "G-NMHGPTQVQ8"
 };
 
 const app = initializeApp(firebaseConfig);
 
-const db = getFirestore(app);
+const database = getDatabase(app);
 const storage = getStorage(app);
-const auth = getAuth(app); // ✅ Make sure this exists
 
-export { db, storage, auth }; // ✅ This must include `auth`
+/** Persist login across APK restarts (IndexedDB + localStorage fallback). */
+let auth;
+try {
+  auth = initializeAuth(app, {
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+  });
+} catch {
+  auth = getAuth(app);
+}
+
+export { database, database as db, storage, auth, app };

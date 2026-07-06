@@ -15,11 +15,12 @@ const OrderNotificationBanner: React.FC<OrderNotificationBannerProps> = ({
   onDismiss,
 }) => (
   <div
-    className="fixed top-20 left-4 right-4 z-[100] mx-auto max-w-lg animate-fade-up"
+    className="fixed left-3 right-3 z-[100] mx-auto max-w-lg animate-fade-up safe-top"
+    style={{ top: 'calc(3.75rem + env(safe-area-inset-top, 0px))' }}
     role="alert"
   >
-    <div className="rounded-2xl border border-orange-300 bg-white shadow-2xl shadow-orange-500/20 overflow-hidden">
-      <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2 flex items-center justify-between">
+    <div className="rounded-2xl border border-green-300 bg-white shadow-2xl shadow-green-600/20 overflow-hidden">
+      <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 py-2 flex items-center justify-between">
         <span className="text-white font-semibold text-sm flex items-center gap-2">
           <Bell className="w-4 h-4" />
           🛒 New Order Received
@@ -27,7 +28,7 @@ const OrderNotificationBanner: React.FC<OrderNotificationBannerProps> = ({
         <button
           type="button"
           onClick={onDismiss}
-          className="text-white/90 hover:text-white p-1"
+          className="text-white/90 hover:text-white p-2 min-h-10 min-w-10 touch-manipulation flex items-center justify-center"
           aria-label="Dismiss"
         >
           <X className="w-4 h-4" />
@@ -46,7 +47,7 @@ const OrderNotificationBanner: React.FC<OrderNotificationBannerProps> = ({
         <Button
           type="button"
           onClick={onView}
-          className="w-full mt-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl"
+          className="w-full mt-2 min-h-12 bg-green-700 hover:bg-green-800 text-white rounded-xl touch-manipulation"
         >
           <ShoppingCart className="w-4 h-4 mr-2" />
           View Order Details

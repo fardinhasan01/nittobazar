@@ -4,14 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Search, List, ArrowRight, X } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { onValue, ref } from 'firebase/database';
+import { database } from '@/lib/firebase';
 import { useCart } from '@/context/CartContext';
 import { useToast } from '@/hooks/use-toast';
 import ProductCard from '@/components/ProductCard';
 import ProductDetailModal from '@/components/ProductDetailModal';
 import { Skeleton } from '@/components/ui/skeleton';
-import { products as localProducts } from '@/data/products';
+import { snapshotToArray } from '@/lib/rtdb';
 
 const Shop = () => {
   const navigate = useNavigate();
@@ -32,64 +32,72 @@ const Shop = () => {
 
   useEffect(() => {
     setLoading(true);
-    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
+    const unsubscribeProducts = onValue(ref(database, 'products'), (snapshot) => {
       try {
-        const firebaseProducts = snapshot.docs.map((doc) => {
-          const data: any = doc.data();
-          return {
-            id: doc.id,
-            name: data.name,
-            price: data.mainPrice ?? data.price ?? 0,
-            originalPrice: data.originalPrice ?? undefined,
-            mainPrice: data.mainPrice ?? data.price ?? 0,
-            offerPrice: data.offerPrice ?? null,
-            discount: data.discount ?? undefined,
-            category: data.category ?? 'Misc',
-            stock: data.stock ?? 0,
-            image: data.image,
-            mainImage: data.mainImage,
-            imageUrl: data.imageUrl,
-            mainImageUrl: data.mainImageUrl ?? data.mainImage ?? data.image ?? data.imageUrl,
-            description: data.description ?? '',
-            inStock: data.inStock ?? true,
-            featured: data.featured ?? false,
-            rating: data.rating ?? 4.5,
-            tags: data.tags ?? [],
-          };
-        });
+        const firebaseProducts = snapshotToArray<any>(snapshot.val()).map((product) => ({
+          id: String(product.id),
+          name: String(product.name || ''),
+          price: Number(product.mainPrice ?? product.price ?? 0),
+          originalPrice: product.originalPrice ?? undefined,
+          mainPrice: Number(product.mainPrice ?? product.price ?? 0),
+          offerPrice: product.offerPrice ?? null,
+          discount: product.discount ?? undefined,
+          category: String(product.category || 'Misc'),
+          stock: Number(product.stock ?? 0),
+          image: product.image,
+          mainImage: product.mainImage,
+          imageUrl: product.imageUrl,
+          mainImageUrl: product.mainImageUrl ?? product.mainImage ?? product.image ?? product.imageUrl,
+          description: product.description ?? '',
+          inStock: product.inStock ?? true,
+          featured: product.featured ?? false,
+          rating: Number(product.rating ?? 4.5),
+          tags: Array.isArray(product.tags) ? product.tags : [],
+        }));
 
-        // Merge with local products (fallback), prefer Firebase by name
-        const allProducts = [...localProducts, ...firebaseProducts];
-        const uniqueProducts = allProducts.filter((product, index, self) =>
-          index === self.findIndex((p: any) => p.name === product.name)
+        const uniqueProducts = firebaseProducts.filter((product, index, self) =>
+          index === self.findIndex((p: any) => p.id === product.id || p.name === product.name)
         );
 
         setProducts(uniqueProducts);
         setFilteredProducts(uniqueProducts);
-
-        const uniqueCategories = ['All', ...new Set(uniqueProducts.map((p: any) => p.category).filter(Boolean))];
-        setCategories(uniqueCategories);
+        setCategories((prev) => (prev.length > 1 ? prev : ['All']));
       } catch (error) {
         console.error('Error mapping products:', error);
-        setProducts(localProducts as any);
-        setFilteredProducts(localProducts as any);
-        const uniqueCategories = ['All', ...new Set(localProducts.map((p: any) => p.category).filter(Boolean))];
-        setCategories(uniqueCategories);
-        toast({ title: 'Warning', description: 'Using local products due to connection issues.', variant: 'default' });
+        setProducts([]);
+        setFilteredProducts([]);
       } finally {
         setLoading(false);
       }
     }, (err) => {
       console.error('Error fetching products:', err);
-      setProducts(localProducts as any);
-      setFilteredProducts(localProducts as any);
-      const uniqueCategories = ['All', ...new Set(localProducts.map((p: any) => p.category).filter(Boolean))];
-      setCategories(uniqueCategories);
+      setProducts([]);
+      setFilteredProducts([]);
       setLoading(false);
-      toast({ title: 'Warning', description: 'Using local products due to connection issues.', variant: 'default' });
     });
 
-    return () => unsubscribe();
+    const unsubscribeCategories = onValue(ref(database, 'categories'), (snapshot) => {
+      const value = snapshot.val();
+      const categoryNames = Array.isArray(value)
+        ? value.map((item) => {
+            if (typeof item === 'string') return item;
+            if (item && typeof item === 'object') return String((item as any).name || (item as any).label || '');
+            return '';
+          })
+        : value && typeof value === 'object'
+          ? Object.values(value as Record<string, any>).map((item) => {
+              if (typeof item === 'string') return item;
+              return String(item?.name || item?.label || '');
+            })
+          : [];
+      const cleaned = ['All', ...categoryNames.filter(Boolean)];
+      setCategories(cleaned.length > 1 ? cleaned : ['All']);
+    });
+
+    return () => {
+      unsubscribeProducts();
+      unsubscribeCategories();
+    };
   }, [toast]);
 
   useEffect(() => {
@@ -161,17 +169,17 @@ const Shop = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-brand-gray dark:bg-brand-charcoal pb-8">
-      <div className="bg-gradient-to-r from-brand-orange/10 to-transparent pt-4 pb-5">
+      <div className="bg-gradient-to-r from-brand-green/10 to-transparent pt-4 pb-5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-2xl md:text-3xl font-black text-orange-700 mb-1 drop-shadow-sm">
+          <h1 className="text-2xl md:text-3xl font-black text-green-800 mb-1 drop-shadow-sm">
             সব পণ্য
           </h1>
-          <p className="text-orange-800 text-xs md:text-sm font-semibold max-w-2xl mx-auto mb-3">
+          <p className="text-green-800 text-xs md:text-sm font-semibold max-w-2xl mx-auto mb-3">
             আমাদের সেরা সকল পণ্য এখনই দেখুন
           </p>
           <Button 
             onClick={() => navigate('/categories')}
-            className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-4 py-2 rounded-lg text-xs shadow-lg"
+            className="bg-green-700 hover:bg-green-800 text-white font-bold px-4 py-2 rounded-lg text-xs shadow-lg"
           >
             <List className="w-3 h-3 mr-1" />
             ক্যাটাগরি দেখুন
@@ -182,7 +190,7 @@ const Shop = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-4 z-10 relative">
         {/* Search and Filter */}
-        <Card className="bg-white/90 backdrop-blur-sm border-orange-200 rounded-2xl shadow-xl mb-6">
+        <Card className="bg-white/90 backdrop-blur-sm border-green-200 rounded-2xl shadow-xl mb-6">
           <CardContent className="p-4">
             <div className="flex flex-col md:flex-row gap-3">
               <div className="relative flex-grow">
@@ -206,7 +214,7 @@ const Shop = () => {
                     key={category}
                     variant={selectedCategory === category ? 'default' : 'outline'}
                     onClick={() => setSelectedCategory(category)}
-                    className={`whitespace-nowrap ${selectedCategory === category ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'border-orange-200 text-orange-700 hover:bg-orange-50'}`}
+                    className={`whitespace-nowrap ${selectedCategory === category ? 'bg-green-700 hover:bg-green-800 text-white' : 'border-green-200 text-green-800 hover:bg-green-50'}`}
                   >
                     {category}
                   </Button>
@@ -244,8 +252,8 @@ const Shop = () => {
 
         {!loading && filteredProducts.length === 0 && (
           <div className="text-center py-20 col-span-full">
-            <h2 className="text-2xl font-bold text-orange-800">কোন পণ্য পাওয়া যায়নি</h2>
-            <p className="text-orange-700 mt-2">আপনার খোঁজ বা ফিল্টার পরিবর্তন করুন।</p>
+            <h2 className="text-2xl font-bold text-green-800">কোন পণ্য পাওয়া যায়নি</h2>
+            <p className="text-green-800 mt-2">আপনার খোঁজ বা ফিল্টার পরিবর্তন করুন।</p>
           </div>
         )}
       </div>

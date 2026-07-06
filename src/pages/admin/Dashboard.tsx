@@ -1,39 +1,44 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  Package, 
-  ShoppingCart, 
-  DollarSign, 
-  Users, 
-  Upload, 
-  Edit, 
-  Trash2, 
-  Eye,
-  LogOut,
-  Plus,
+import {
+  Package,
+  ShoppingCart,
+  DollarSign,
+  Edit,
+  Trash2,
   CheckCircle,
   Percent,
-  TrendingUp,
   MapPin,
   Phone,
-  Mail
+  Mail,
+  Users,
+  Loader2,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { collection, addDoc, getDocs, doc, updateDoc, deleteDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { auth, db, storage } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { database } from '@/lib/firebase';
+import { get, onValue, ref, remove, update } from 'firebase/database';
 import { useToast } from '@/hooks/use-toast';
-import AddProduct from './AddProduct';
-import { getProductImageUrl, getPrice } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
+import { getProductImage, getPrice } from '@/lib/utils';
+import {
+  formatOrderDate,
+  normalizeCustomer,
+  normalizeOrderItems,
+  parseOrderDate,
+} from '@/lib/orderUtils';
 import NotificationSettings from '@/components/admin/NotificationSettings';
 import OrderNotificationBanner from '@/components/admin/OrderNotificationBanner';
 import { useAdminOrderNotifications } from '@/hooks/useAdminOrderNotifications';
+import AdminLayout, { type AdminTab } from '@/components/admin/AdminLayout';
+import AdminConfirmDialog from '@/components/admin/AdminConfirmDialog';
+import ProductEditDialog, { type EditableProduct } from '@/components/admin/ProductEditDialog';
+
+const AddProduct = React.lazy(() => import('./AddProduct'));
 
 interface Order {
   id: string;
@@ -80,47 +85,30 @@ interface Product {
   inStock: boolean;
   featured?: boolean;
   rating: number;
+  offerPrice?: number | null;
 }
+
+type ConfirmAction =
+  | { type: 'delete-product'; id: string }
+  | { type: 'delete-order'; id: string }
+  | { type: 'delete-all-products' };
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
   const [adminProducts, setAdminProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [mainPrice, setMainPrice] = useState('');
-  const [offerPrice, setOfferPrice] = useState('');
-  const [mainImageFile, setMainImageFile] = useState<File | null>(null);
-  const [mainImagePreview, setMainImagePreview] = useState<string | null>(null);
-  const [additionalImageFiles, setAdditionalImageFiles] = useState<File[]>([]);
-  const [additionalImagePreviews, setAdditionalImagePreviews] = useState<string[]>([]);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoPreview, setVideoPreview] = useState<string | null>(null);
-  const [tags, setTags] = useState<string[]>([]);
-
-  const [newProduct, setNewProduct] = useState({
-    name: '',
-    price: '',
-    originalPrice: '',
-    discount: '',
-    category: 'Headphones',
-    stock: '',
-    description: '',
-    image: null as File | null,
-    additionalImages: [] as File[],
-    videoUrl: '',
-    featured: false,
-    rating: '4.5'
-  });
-
   const [searchTerm, setSearchTerm] = useState('');
   const [highlightedOrderId, setHighlightedOrderId] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<EditableProduct | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const orderCardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const openOrderDetails = useCallback((orderId: string) => {
@@ -141,25 +129,23 @@ const AdminDashboard = () => {
     fcmReady,
   } = useAdminOrderNotifications(orders, openOrderDetails);
 
-  const tagOptions = [
-    { value: 'Hot', label: 'Hot 🔥' },
-    { value: 'Exclusive', label: 'Exclusive 🌟' },
-    { value: 'Trending', label: 'Trending 💹' },
-  ];
+  const pendingOrdersCount = useMemo(
+    () => orders.filter((o) => o.status === 'pending' || o.status === 'processing').length,
+    [orders]
+  );
 
   useEffect(() => {
-    // Check Firebase authentication
+    let unsubOrders: (() => void) | undefined;
+    let unsubProducts: (() => void) | undefined;
+
     const unsubAuth = onAuthStateChanged(auth, (user) => {
+      unsubOrders?.();
+      unsubProducts?.();
       if (user) {
         setIsAuthenticated(true);
-        const unsubOrders = loadOrders();
-        const unsubProducts = loadProductsRealtime();
+        unsubOrders = loadOrders();
+        unsubProducts = loadProductsRealtime();
         setLoading(false);
-        // Cleanup listeners when auth changes away from logged-in state
-        return () => {
-          unsubOrders && unsubOrders();
-          unsubProducts && unsubProducts();
-        };
       } else {
         setIsAuthenticated(false);
         setLoading(false);
@@ -169,37 +155,60 @@ const AdminDashboard = () => {
 
     return () => {
       unsubAuth();
+      unsubOrders?.();
+      unsubProducts?.();
     };
   }, [navigate]);
 
   const loadOrders = () => {
-    const unsubscribe = onSnapshot(collection(db, 'orders'), (snapshot) => {
-      const ordersData = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data
-        } as Order;
-      }).filter((order: any) => {
-        return order.pricing && typeof order.pricing.total === 'number';
-      });
-      
-      setOrders(ordersData.sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime()));
-    });
-
+    const unsubscribe = onValue(
+      ref(database, 'orders'),
+      (snapshot) => {
+        const value = snapshot.val() || {};
+        const ordersData = Object.entries(value)
+          .map(([id, data]) => ({
+            id,
+            ...(data as Record<string, unknown>),
+            customer: normalizeCustomer((data as Record<string, unknown>).customer),
+            items: normalizeOrderItems((data as Record<string, unknown>).items),
+          }))
+          .filter((order) => order.pricing && typeof order.pricing.total === 'number') as Order[];
+        setOrders(
+          ordersData.sort(
+            (a, b) => parseOrderDate(String(b.orderDate || '')).getTime() - parseOrderDate(String(a.orderDate || '')).getTime()
+          )
+        );
+      },
+      (err) => {
+        console.error('Error loading orders:', err);
+        toast({
+          title: 'Orders unavailable',
+          description: 'Could not load orders. Check your connection.',
+          variant: 'destructive',
+        });
+      }
+    );
     return unsubscribe;
   };
 
   const loadProductsRealtime = () => {
-    const unsubscribe = onSnapshot(collection(db, 'products'), (snapshot) => {
-      const productsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Product[];
-      setAdminProducts(productsData);
-    }, (err) => {
-      console.error('Error loading products:', err);
-    });
+    const unsubscribe = onValue(
+      ref(database, 'products'),
+      (snapshot) => {
+        const value = snapshot.val() || {};
+        setAdminProducts(
+          Object.entries(value).map(([id, data]) => ({ id, ...(data as Record<string, unknown>) })) as Product[]
+        );
+      },
+      (err) => {
+        console.error('Error loading products:', err);
+        toast({
+          title: 'Products unavailable',
+          description: 'Could not load products.',
+          variant: 'destructive',
+        });
+      }
+    );
     return unsubscribe;
   };
 
@@ -207,478 +216,352 @@ const AdminDashboard = () => {
     try {
       await signOut(auth);
       navigate('/admin/login');
-      toast({
-        title: "Logged out",
-        description: "You have been successfully logged out.",
-      });
+      toast({ title: 'Logged out', description: 'You have been successfully logged out.' });
     } catch (error) {
       console.error('Error signing out:', error);
+      toast({ title: 'Error', description: 'Could not sign out.', variant: 'destructive' });
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
-    
-    if (type === 'checkbox') {
-      const checked = (e.target as HTMLInputElement).checked;
-      setNewProduct(prev => ({ ...prev, [name]: checked }));
-    } else {
-      setNewProduct(prev => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const handleMainImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setMainImageFile(e.target.files[0]);
-      setMainImagePreview(URL.createObjectURL(e.target.files[0]));
-    }
-  };
-
-  const handleAdditionalImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const filesArray = Array.from(e.target.files);
-      setAdditionalImageFiles(filesArray);
-      setAdditionalImagePreviews(filesArray.map(file => URL.createObjectURL(file)));
-    }
-  };
-
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setVideoFile(e.target.files[0]);
-      setVideoPreview(URL.createObjectURL(e.target.files[0]));
-    }
-  };
-
-  const handleTagChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selected = Array.from(e.target.selectedOptions).map(opt => opt.value);
-    setTags(selected);
-  };
-
-  const validateProduct = () => {
-    if (!newProduct.name.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Product name is required",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    if (!newProduct.price || isNaN(Number(newProduct.price)) || Number(newProduct.price) <= 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid price",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    if (!newProduct.stock || isNaN(Number(newProduct.stock)) || Number(newProduct.stock) < 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid stock quantity",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    if (newProduct.originalPrice && (isNaN(Number(newProduct.originalPrice)) || Number(newProduct.originalPrice) <= 0)) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid original price",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    if (newProduct.discount && (isNaN(Number(newProduct.discount)) || Number(newProduct.discount) < 0 || Number(newProduct.discount) > 100)) {
-      toast({
-        title: "Validation Error",
-        description: "Discount must be between 0 and 100",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    if (newProduct.videoUrl && !/^https?:\/\//.test(newProduct.videoUrl)) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid video URL (http/https)",
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleAddProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    // Validation
-    if (!name.trim() || !mainPrice.trim() || !mainImageFile) {
-      toast({ title: '❌ Error', description: 'Please fill in all required fields (name, main price, main image)', variant: 'destructive' });
-      return;
-    }
-    setIsUploading(true);
+  const runConfirmAction = async () => {
+    if (!confirmAction) return;
+    setConfirmLoading(true);
     try {
-      // Upload main image
-      let mainImageUrl = '';
-      if (mainImageFile) {
-        const imageRef = ref(storage, `products/${Date.now()}_${mainImageFile.name}`);
-        const snap = await uploadBytes(imageRef, mainImageFile);
-        mainImageUrl = await getDownloadURL(snap.ref);
+      if (confirmAction.type === 'delete-product') {
+        setDeletingProductId(confirmAction.id);
+        await remove(ref(database, `products/${confirmAction.id}`));
+        toast({ title: 'Product deleted', description: 'Product removed from the store.' });
+      } else if (confirmAction.type === 'delete-order') {
+        await remove(ref(database, `orders/${confirmAction.id}`));
+        toast({ title: 'Order deleted', description: 'Order has been removed.' });
+      } else if (confirmAction.type === 'delete-all-products') {
+        await remove(ref(database, 'products'));
+        toast({ title: 'All products deleted', description: 'All products removed from Realtime Database.' });
       }
-      // Upload additional images
-      let additionalImageUrls: string[] = [];
-      for (const file of additionalImageFiles) {
-        const imgRef = ref(storage, `products/${Date.now()}_${file.name}`);
-        const snap = await uploadBytes(imgRef, file);
-        const url = await getDownloadURL(snap.ref);
-        additionalImageUrls.push(url);
-      }
-      // Upload video
-      let videoUrlFinal = '';
-      if (videoFile) {
-        const videoRef = ref(storage, `products/videos/${Date.now()}_${videoFile.name}`);
-        const snap = await uploadBytes(videoRef, videoFile);
-        videoUrlFinal = await getDownloadURL(snap.ref);
-      }
-      const product = {
-        name: name.trim(),
-        description: description.trim(),
-        mainPrice: parseFloat(mainPrice || "0"),
-        offerPrice: offerPrice ? parseFloat(offerPrice || "0") : null,
-        mainImage: mainImageUrl,
-        additionalImages: additionalImageUrls,
-        videoUrl: videoUrlFinal,
-        tags,
-        createdAt: serverTimestamp()
-      };
-      console.log('Submitting product:', product);
-      await addDoc(collection(db, 'products'), product);
-      toast({ title: '✅ Success', description: 'Product added successfully!' });
-      setName(''); setDescription(''); setMainPrice(''); setOfferPrice(''); setMainImageFile(null); setMainImagePreview(null); setAdditionalImageFiles([]); setAdditionalImagePreviews([]); setVideoFile(null); setVideoPreview(null); setTags([]);
-      // Realtime listener will update product list automatically
+      setConfirmAction(null);
     } catch (error) {
-      console.error('Error adding product:', error);
-      toast({ title: '❌ Error', description: 'Failed to add product', variant: 'destructive' });
+      console.error(error);
+      toast({ title: 'Error', description: 'Action failed. Please try again.', variant: 'destructive' });
     } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const deleteProduct = async (id: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
-      try {
-        await deleteDoc(doc(db, 'products', id));
-        await loadProducts();
-        toast({
-          title: "Product Deleted",
-          description: "Product has been removed from the store.",
-        });
-      } catch (error) {
-        console.error('Error deleting product:', error);
-        toast({
-          title: "Error",
-          description: "Failed to delete product.",
-          variant: "destructive"
-        });
-      }
+      setConfirmLoading(false);
+      setDeletingProductId(null);
     }
   };
 
   const updateOrderStatus = async (orderId: string, status: string) => {
+    setUpdatingOrderId(orderId);
     try {
-      await updateDoc(doc(db, 'orders', orderId), { status });
-      toast({
-        title: "Order Updated",
-        description: `Order status changed to ${status}.`,
-      });
+      await update(ref(database, `orders/${orderId}`), { status });
+      toast({ title: 'Order updated', description: `Status changed to ${status}.` });
     } catch (error) {
       console.error('Error updating order:', error);
+      toast({ title: 'Error', description: 'Failed to update order.', variant: 'destructive' });
+    } finally {
+      setUpdatingOrderId(null);
     }
   };
 
-  const deleteOrder = async (orderId: string) => {
-    if (confirm('Are you sure you want to delete this order?')) {
-      try {
-        await deleteDoc(doc(db, 'orders', orderId));
-        toast({
-          title: "Order Deleted",
-          description: "Order has been removed.",
-        });
-      } catch (error) {
-        console.error('Error deleting order:', error);
-      }
-    }
+  const openEditProduct = (product: Product) => {
+    setEditingProduct({
+      id: product.id,
+      name: product.name,
+      mainPrice: (product as Product & { mainPrice?: number }).mainPrice ?? getPrice(product as never),
+      offerPrice: product.offerPrice,
+      description: product.description,
+      inStock: product.inStock,
+      stock: product.stock,
+    });
+    setEditOpen(true);
   };
 
-  const deleteAllProducts = async () => {
-    if (!window.confirm('Are you sure you want to delete ALL products? This cannot be undone.')) return;
-    try {
-      const snapshot = await getDocs(collection(db, 'products'));
-      const batchDeletes = snapshot.docs.map(docSnap => deleteDoc(doc(db, 'products', docSnap.id)));
-      await Promise.all(batchDeletes);
-      toast({ title: 'All products deleted', description: 'All products have been removed from Firestore.' });
-      // Realtime listener will reflect deletions
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to delete all products', variant: 'destructive' });
-    }
-  };
-
-  const filteredAdminProducts = adminProducts.filter(product =>
-    product.name && product.name.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredAdminProducts = adminProducts.filter(
+    (product) => product.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const getProductThumb = (product: Product) =>
+    getProductImage(product as unknown as Record<string, unknown>);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#f0f4f8] via-[#fdf6f0] to-[#fff] text-[#222] flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-premium-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading...</p>
+      <div className="admin-shell min-h-[100dvh] flex items-center justify-center bg-gradient-to-br from-[#f0f4f8] via-[#fdf6f0] to-[#fff]">
+        <div className="text-center px-4">
+          <Loader2 className="w-12 h-12 animate-spin text-premium-600 mx-auto mb-4" />
+          <p className="text-gray-500">Loading admin panel…</p>
         </div>
       </div>
     );
   }
 
-  if (!isAuthenticated) {
-    // Render nothing once we've navigated away, but avoid infinite spinner
-    return null;
-  }
+  if (!isAuthenticated) return null;
 
-  const totalRevenue = orders
-    .filter(order => order.pricing && typeof order.pricing.total === 'number')
-    .reduce((sum, order) => sum + order.pricing.total, 0);
-    
+  const totalRevenue = orders.reduce((sum, order) => sum + (order.pricing?.total ?? 0), 0);
   const totalDiscountSavings = adminProducts.reduce((sum, product) => {
-    if (product.originalPrice && (product as any).price) {
-      return sum + (product.originalPrice - (product as any).price) * (product as any).stock;
+    if (product.originalPrice && (product as Product & { price?: number }).price) {
+      return (
+        sum +
+        (product.originalPrice - (product as Product & { price: number }).price) *
+          product.stock
+      );
     }
     return sum;
   }, 0);
 
   const stats = [
-    { title: "Total Products", value: adminProducts.length, icon: Package, color: "from-premium-500 to-emerald-500" },
-    { title: "Total Orders", value: orders.length, icon: ShoppingCart, color: "from-emerald-500 to-green-500" },
-    { title: "Revenue", value: `৳${totalRevenue.toFixed(2)}`, icon: DollarSign, color: "from-green-600 to-emerald-600" },
-    { title: "Discount Savings", value: `৳${totalDiscountSavings.toFixed(2)}`, icon: Percent, color: "from-gold-500 to-yellow-500" }
+    { title: 'Total Products', value: adminProducts.length, icon: Package },
+    { title: 'Total Orders', value: orders.length, icon: ShoppingCart },
+    { title: 'Revenue', value: `৳${totalRevenue.toFixed(2)}`, icon: DollarSign },
+    { title: 'Discount Savings', value: `৳${totalDiscountSavings.toFixed(2)}`, icon: Percent },
   ];
 
+  const confirmCopy = (() => {
+    if (!confirmAction) return { title: '', description: '' };
+    if (confirmAction.type === 'delete-product') {
+      return { title: 'Delete product?', description: 'This cannot be undone.' };
+    }
+    if (confirmAction.type === 'delete-order') {
+      return { title: 'Delete order?', description: 'This order will be permanently removed.' };
+    }
+    return {
+      title: 'Delete all products?',
+      description: 'Every product in Firestore will be removed. This cannot be undone.',
+    };
+  })();
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f0f4f8] via-[#fdf6f0] to-[#fff] text-[#222]">
-      {inAppAlert && (
-        <OrderNotificationBanner
-          alert={inAppAlert}
-          onView={openAlertOrder}
-          onDismiss={dismissAlert}
-        />
+    <AdminLayout
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      onLogout={handleLogout}
+      ordersCount={orders.length}
+      newOrdersBadge={inAppAlert ? 1 : pendingOrdersCount}
+      topBanner={
+        inAppAlert ? (
+          <OrderNotificationBanner
+            alert={inAppAlert}
+            onView={openAlertOrder}
+            onDismiss={dismissAlert}
+          />
+        ) : undefined
+      }
+    >
+      {activeTab === 'overview' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
+            {stats.map((stat, index) => (
+              <Card key={index} className="bg-white/80 backdrop-blur-lg border border-premium-200/30">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-gray-600 text-xs sm:text-sm truncate">{stat.title}</p>
+                      <p className="text-lg sm:text-2xl font-bold text-premium-700 truncate">{stat.value}</p>
+                    </div>
+                    <div className="bg-premium-100 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shrink-0">
+                      <stat.icon className="w-5 h-5 sm:w-6 sm:h-6 text-premium-600" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            <Card className="bg-white/80 border border-premium-200/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-premium-800 text-base">Top categories</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {['Headphones', 'Selfie Sticks', 'Microphones', 'Toys'].map((category) => (
+                  <div key={category} className="flex justify-between items-center py-2 text-sm">
+                    <span className="text-gray-700">{category}</span>
+                    <span className="text-premium-600 font-medium">
+                      {adminProducts.filter((p) => (p as Product & { category?: string }).category === category).length}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/80 border border-premium-200/30">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-premium-800 text-base">Recent orders</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {orders.slice(0, 4).map((order) => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    className="w-full flex justify-between items-center py-2.5 text-sm text-left touch-manipulation min-h-11"
+                    onClick={() => openOrderDetails(order.id)}
+                  >
+                    <span className="text-gray-700 truncate pr-2">{order.orderNumber}</span>
+                    <Badge variant="secondary" className="shrink-0 capitalize">
+                      {order.status}
+                    </Badge>
+                  </button>
+                ))}
+                {orders.length === 0 && (
+                  <p className="text-sm text-gray-500 py-2">No orders yet.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <NotificationSettings
+            settings={notificationSettings}
+            onChange={updateNotificationSettings}
+            onTest={sendTestNotification}
+            fcmReady={fcmReady}
+          />
+        </div>
       )}
-      {/* Header */}
-      <header className="bg-white/70 backdrop-blur-lg border-b border-premium-200/60 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <img 
-                src="/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png" 
-                alt="AB Gadgets Logo" 
-                className="w-10 h-10 mr-3 rounded-lg shadow-lg transform hover:scale-110 transition-transform duration-300"
+
+      {activeTab === 'products' && (
+        <Card className="bg-white/90 border border-premium-200/40 overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-premium-800 text-lg">
+              Products ({adminProducts.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-3">
+              <Input
+                type="search"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search products…"
+                className="min-h-11 w-full"
               />
-              <Link to="/" className="text-2xl font-bold bg-gradient-to-r from-premium-600 to-emerald-600 bg-clip-text text-transparent mr-8">
-                AB GADGETS
-              </Link>
-              <span className="text-gray-600">Admin Dashboard</span>
-            </div>
-            <Button
-              onClick={handleLogout}
-              variant="outline"
-              className="border-red-400 text-red-400 hover:bg-red-400/10"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Navigation Tabs */}
-        <div className="flex space-x-1 mb-8 bg-gray-800/30 p-1 rounded-lg backdrop-blur-lg border border-premium-500/20">
-          {['overview', 'products', 'orders', 'add-product'].map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-md font-medium transition-all capitalize ${
-                activeTab === tab 
-                  ? 'bg-gradient-to-r from-premium-600 to-emerald-600 text-white' 
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              {tab.replace('-', ' ')}
-            </button>
-          ))}
-        </div>
-
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {stats.map((stat, index) => (
-                <Card key={index} className="bg-white/80 backdrop-blur-lg border border-premium-200/30">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-gray-600 text-sm">{stat.title}</p>
-                        <p className="text-2xl font-bold text-premium-700">{stat.value}</p>
-                      </div>
-                      <div className={`bg-gradient-to-r ${stat.color.replace('from-', 'from-premium-200 ').replace('to-', 'to-emerald-200 ')} w-12 h-12 rounded-full flex items-center justify-center`}>
-                        <stat.icon className="w-6 h-6 text-premium-600" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              <Button
+                type="button"
+                variant="outline"
+                className="border-red-400 text-red-500 hover:bg-red-50 min-h-11 w-full sm:w-auto touch-manipulation"
+                onClick={() => setConfirmAction({ type: 'delete-all-products' })}
+              >
+                Delete all products
+              </Button>
             </div>
 
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card className="bg-gray-800/30 backdrop-blur-lg border border-premium-500/20">
-                <CardHeader>
-                  <CardTitle className="text-white">Top Categories</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {['Headphones', 'Selfie Sticks', 'Microphones', 'Toys'].map((category) => (
-                    <div key={category} className="flex justify-between items-center py-2">
-                      <span className="text-gray-300">{category}</span>
-                      <span className="text-premium-400">{adminProducts.filter(p => (p as any).category === category).length}</span>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              <Card className="bg-gray-800/30 backdrop-blur-lg border border-premium-500/20">
-                <CardHeader>
-                  <CardTitle className="text-white">Recent Orders</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {orders.slice(0, 4).map((order) => (
-                    <div key={order.id} className="flex justify-between items-center py-2">
-                      <span className="text-gray-300">{order.orderNumber}</span>
-                      <Badge className={
-                        order.status === 'delivered' ? 'bg-green-500/20 text-green-300' :
-                        order.status === 'shipped' ? 'bg-blue-500/20 text-blue-300' :
-                        'bg-yellow-500/20 text-yellow-300'
-                      }>
-                        {order.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </div>
-
-            <NotificationSettings
-              settings={notificationSettings}
-              onChange={updateNotificationSettings}
-              onTest={sendTestNotification}
-              fcmReady={fcmReady}
-            />
-          </div>
-        )}
-
-        {/* Products Tab */}
-        {activeTab === 'products' && (
-          <Card className="bg-gray-800/30 backdrop-blur-lg border border-premium-500/20">
-            <CardHeader>
-              <CardTitle className="text-white">Product Management ({adminProducts.length} products)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                <Button
-                  onClick={deleteAllProducts}
-                  variant="outline"
-                  className="border-red-400 text-red-400 hover:bg-red-400/10"
+            <div className="md:hidden space-y-3">
+              {filteredAdminProducts.map((product) => (
+                <div
+                  key={product.id}
+                  className="rounded-xl border border-gray-200 bg-white p-3 flex gap-3"
                 >
-                  Delete All Products
-                </Button>
-                <div className="w-full sm:w-80">
-                  <Input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search products"
-                    className="bg-gray-700/50 border-gray-600 text-white focus:border-premium-500"
+                  <img
+                    src={getProductThumb(product)}
+                    alt=""
+                    className="w-20 h-20 object-contain rounded-lg bg-gray-50 shrink-0"
+                    loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = '/placeholder.svg';
+                    }}
                   />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate">{product.name}</p>
+                    <p className="text-premium-600 font-semibold text-sm mt-1">
+                      ৳{new Intl.NumberFormat('en-US').format(getPrice(product as never))}
+                    </p>
+                    <p className="text-xs mt-1">
+                      {product.inStock ? (
+                        <span className="text-green-600">In stock</span>
+                      ) : (
+                        <span className="text-red-500">Out of stock</span>
+                      )}
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="min-h-10 flex-1 touch-manipulation"
+                        onClick={() => openEditProduct(product)}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="min-h-10 flex-1 border-red-300 text-red-500 touch-manipulation"
+                        disabled={deletingProductId === product.id}
+                        onClick={() => setConfirmAction({ type: 'delete-product', id: product.id })}
+                      >
+                        {deletingProductId === product.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Delete
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="overflow-x-auto">
+              ))}
+              {filteredAdminProducts.length === 0 && (
+                <p className="text-center text-gray-500 py-8 text-sm">No products found.</p>
+              )}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto -mx-1">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-gray-700">
-                    <TableHead className="text-gray-300 w-20">Image</TableHead>
-                    <TableHead className="text-gray-300 min-w-[200px]">Name</TableHead>
-                    <TableHead className="text-gray-300 w-24">Price</TableHead>
-                    <TableHead className="text-gray-300 w-20">Stock</TableHead>
-                    <TableHead className="text-gray-300 w-24">Status</TableHead>
-                    <TableHead className="text-gray-300 w-24">Actions</TableHead>
+                  <TableRow>
+                    <TableHead className="w-20">Image</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead className="w-24">Price</TableHead>
+                    <TableHead className="w-24">Status</TableHead>
+                    <TableHead className="w-28">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAdminProducts.map((product) => (
-                    <TableRow key={product.id} className="border-gray-700">
+                    <TableRow key={product.id}>
                       <TableCell className="p-2">
-                        <img 
-                          src={
-                            product.mainImageUrl ||
-                            (Array.isArray((product as any).image) ? (product as any).image[0] : (product as any).image) ||
-                            "/placeholder.jpg"
-                          } 
-                          alt={product.name} 
-                          className="w-16 h-16 object-contain rounded-lg shadow bg-premium-50"
+                        <img
+                          src={getProductThumb(product)}
+                          alt=""
+                          className="w-14 h-14 object-contain rounded-lg"
                           loading="lazy"
-                          onError={(e) => {
-                            // Fallback to placeholder if any error occurs
-                            const target = e.target as HTMLImageElement;
-                            target.src = '/placeholder.jpg';
-                            target.onerror = null;
-                          }}
                         />
                       </TableCell>
-                      <TableCell className="text-white p-2">
-                        <div className="max-w-[200px]">
-                          <div className="text-sm font-medium truncate">{product.name}</div>
-                          {product.featured && <Badge className="bg-premium-500/20 text-premium-300 text-xs mt-1">Featured</Badge>}
-                        </div>
+                      <TableCell className="font-medium max-w-[200px] truncate">{product.name}</TableCell>
+                      <TableCell className="text-premium-600 font-semibold">
+                        ৳{new Intl.NumberFormat('en-US').format(getPrice(product as never))}
                       </TableCell>
-                      <TableCell className="text-premium-400 font-semibold p-2 text-sm">
-                        {(() => {
-                          const price = getPrice(product as any);
-                          return `৳${new Intl.NumberFormat('en-US').format(price)}`;
-                        })()}
-                      </TableCell>
-                      <TableCell className="p-2">
-                        {product.inStock ? (
-                          <span className="inline-flex items-center gap-1 text-green-400 font-semibold text-xs">✅ In Stock</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-red-400 font-semibold text-xs">❌ Out of Stock</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="p-2">
-                        <Badge className={product.inStock ? 'bg-green-500/20 text-green-300 text-xs' : 'bg-red-500/20 text-red-300 text-xs'}>
-                          {product.inStock ? 'In Stock' : 'Out of Stock'}
+                      <TableCell>
+                        <Badge variant={product.inStock ? 'default' : 'destructive'}>
+                          {product.inStock ? 'In stock' : 'Out'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="p-2">
-                        <div className="flex space-x-1">
-                          <Button size="sm" variant="outline" className="border-premium-400 text-premium-400 hover:bg-premium-400/10 p-1 h-8 w-8">
-                            <Edit className="w-3 h-3" />
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            className="border-red-400 text-red-400 hover:bg-red-400/10 p-1 h-8 w-8"
-                            onClick={() => deleteProduct(product.id)}
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-10 w-10 touch-manipulation"
+                            onClick={() => openEditProduct(product)}
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="outline"
+                            className="h-10 w-10 border-red-300 text-red-500 touch-manipulation"
+                            disabled={deletingProductId === product.id}
+                            onClick={() =>
+                              setConfirmAction({ type: 'delete-product', id: product.id })
+                            }
+                          >
+                            {deletingProductId === product.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>
@@ -686,157 +569,200 @@ const AdminDashboard = () => {
                   ))}
                 </TableBody>
               </Table>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Orders Tab */}
-        {activeTab === 'orders' && (
-          <Card className="bg-gray-800/30 backdrop-blur-lg border border-premium-500/20">
-            <CardHeader>
-              <CardTitle className="text-white">Order Management ({orders.length} orders)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {orders.map((order) => (
-                  <Card
-                    key={order.id}
-                    id={`order-card-${order.id}`}
-                    ref={(el) => {
-                      orderCardRefs.current[order.id] = el;
-                    }}
-                    className={`bg-gray-700/30 border ${
-                      highlightedOrderId === order.id
-                        ? 'border-orange-500 ring-2 ring-orange-400/50'
-                        : 'border-gray-600'
-                    }`}
-                  >
-                    <CardContent className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {/* Order Info */}
-                        <div>
-                          <h4 className="text-lg font-semibold text-premium-400 mb-3">Order Details</h4>
-                          <div className="space-y-2 text-sm">
-                            <p className="text-white"><strong>Order #:</strong> {order.orderNumber}</p>
-                            <p className="text-gray-300"><strong>Date:</strong> {new Date(order.orderDate).toLocaleDateString()}</p>
-                            <p className="text-gray-300"><strong>Status:</strong> 
-                              <Badge className={`ml-2 ${
-                                order.status === 'delivered' ? 'bg-green-500/20 text-green-300' :
-                                order.status === 'shipped' ? 'bg-blue-500/20 text-blue-300' :
-                                'bg-yellow-500/20 text-yellow-300'
-                              }`}>
-                                {order.status}
-                              </Badge>
-                            </p>
-                            <p className="text-gray-300"><strong>Payment:</strong> {order.paymentMethod === 'cod' ? 'Cash on Delivery' : `bKash: ${order.bkashNumber}`}</p>
-                          </div>
+      {activeTab === 'orders' && (
+        <Card className="bg-white/90 border border-premium-200/40">
+          <CardHeader>
+            <CardTitle className="text-premium-800 text-lg flex items-center gap-2">
+              Orders ({orders.length})
+              {pendingOrdersCount > 0 && (
+                <Badge className="bg-green-600">{pendingOrdersCount} pending</Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {orders.map((order) => {
+              const customer = order.customer ?? normalizeCustomer(null);
+              const items = order.items?.length ? order.items : normalizeOrderItems(null);
+              return (
+              <Card
+                key={order.id}
+                id={`order-card-${order.id}`}
+                ref={(el) => {
+                  orderCardRefs.current[order.id] = el;
+                }}
+                className={`border ${
+                  highlightedOrderId === order.id
+                    ? 'border-green-600 ring-2 ring-green-400/40'
+                    : 'border-gray-200'
+                }`}
+              >
+                <CardContent className="p-4 sm:p-6 space-y-4">
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <h4 className="font-semibold text-premium-700 mb-2">Order</h4>
+                      <div className="space-y-1 text-sm">
+                        <p>
+                          <strong>#</strong> {order.orderNumber}
+                        </p>
+                        <p className="text-gray-600">
+                          {formatOrderDate(order.orderDate)} ·{' '}
+                          <Badge className="capitalize">{order.status || 'pending'}</Badge>
+                        </p>
+                        <p className="text-gray-600">
+                          Payment:{' '}
+                          {order.paymentMethod === 'cod'
+                            ? 'Cash on delivery'
+                            : `bKash ${order.bkashNumber ?? ''}`}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-semibold text-green-700 mb-2">Customer</h4>
+                      <div className="space-y-2 text-sm text-gray-700">
+                        <div className="flex items-center gap-2 min-h-8">
+                          <Users className="w-4 h-4 shrink-0 text-gray-400" />
+                          {customer.firstName} {customer.lastName}
                         </div>
-
-                        {/* Customer Info */}
-                        <div>
-                          <h4 className="text-lg font-semibold text-green-400 mb-3">Customer Details</h4>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex items-center text-white">
-                              <Users className="w-4 h-4 mr-2 text-gray-400" />
-                              {order.customer.firstName} {order.customer.lastName}
-                            </div>
-                            <div className="flex items-center text-gray-300">
-                              <Mail className="w-4 h-4 mr-2 text-gray-400" />
-                              {order.customer.email}
-                            </div>
-                            <div className="flex items-center text-gray-300">
-                              <Phone className="w-4 h-4 mr-2 text-gray-400" />
-                              {order.customer.phone}
-                            </div>
-                            <div className="flex items-start text-gray-300">
-                              <MapPin className="w-4 h-4 mr-2 text-gray-400 mt-0.5" />
-                              <div>
-                                <p>{order.customer.address}</p>
-                                <p className="text-premium-400">{order.customer.deliveryArea}</p>
-                              </div>
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-2 min-h-8 break-all">
+                          <Mail className="w-4 h-4 shrink-0 text-gray-400" />
+                          {customer.email}
                         </div>
-
-                        {/* Order Items & Pricing */}
-                        <div>
-                          <h4 className="text-lg font-semibold text-purple-400 mb-3">Items & Pricing</h4>
-                          <div className="space-y-2 text-sm">
-                            {order.items.map((item, index) => {
-                              const price = getPrice(item);
-                              
-                              return (
-                                <div key={index} className="flex justify-between text-gray-300">
-                                  <span>{item.name} (x{item.quantity})</span>
-                                  <span>৳{new Intl.NumberFormat('en-US').format(price * item.quantity)}</span>
-                                </div>
-                              );
-                            })}
-                            <div className="border-t border-gray-600 pt-2 mt-2">
-                              <div className="flex justify-between text-gray-300">
-                                <span>Subtotal:</span>
-                                <span>৳{order.pricing?.subtotal || 0}</span>
-                              </div>
-                              <div className="flex justify-between text-gray-300">
-                                <span>Delivery:</span>
-                                <span>৳{order.pricing?.deliveryCharge || 0}</span>
-                              </div>
-                              <div className="flex justify-between text-white font-semibold text-lg">
-                                <span>Total:</span>
-                                <span>৳{order.pricing?.total || 0}</span>
-                              </div>
-                            </div>
+                        {customer.phone ? (
+                          <div className="flex items-center gap-2 min-h-8">
+                            <Phone className="w-4 h-4 shrink-0 text-gray-400" />
+                            <a href={`tel:${customer.phone}`} className="text-premium-600 touch-manipulation">
+                              {customer.phone}
+                            </a>
+                          </div>
+                        ) : null}
+                        <div className="flex gap-2">
+                          <MapPin className="w-4 h-4 shrink-0 text-gray-400 mt-0.5" />
+                          <div>
+                            <p>{customer.address}</p>
+                            {customer.deliveryArea ? (
+                              <p className="text-premium-600">{customer.deliveryArea}</p>
+                            ) : null}
                           </div>
                         </div>
                       </div>
+                    </div>
 
-                      {/* Actions */}
-                      <div className="flex space-x-2 mt-6 pt-4 border-t border-gray-600">
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="border-green-400 text-green-400 hover:bg-green-400/10"
-                          onClick={() => updateOrderStatus(order.id, 'delivered')}
-                          disabled={order.status === 'delivered'}
-                        >
+                    <div>
+                      <h4 className="font-semibold text-purple-700 mb-2">Items</h4>
+                      <div className="space-y-1 text-sm">
+                        {items.map((item, index) => (
+                          <div key={index} className="flex justify-between gap-2">
+                            <span className="truncate">
+                              {item.name} ×{item.quantity}
+                            </span>
+                            <span className="shrink-0">
+                              ৳
+                              {new Intl.NumberFormat('en-US').format(
+                                getPrice(item) * item.quantity
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                        <div className="border-t pt-2 mt-2 font-semibold flex justify-between">
+                          <span>Total</span>
+                          <span>৳{order.pricing?.total ?? 0}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row flex-wrap gap-2 pt-2 border-t">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="min-h-11 flex-1 touch-manipulation"
+                      disabled={
+                        order.status === 'delivered' || updatingOrderId === order.id
+                      }
+                      onClick={() => updateOrderStatus(order.id, 'delivered')}
+                    >
+                      {updatingOrderId === order.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
                           <CheckCircle className="w-4 h-4 mr-2" />
-                          Mark Delivered
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="border-blue-400 text-blue-400 hover:bg-blue-400/10"
-                          onClick={() => updateOrderStatus(order.id, 'shipped')}
-                          disabled={order.status === 'delivered'}
-                        >
-                          <Package className="w-4 h-4 mr-2" />
-                          Mark Shipped
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="border-red-400 text-red-400 hover:bg-red-400/10"
-                          onClick={() => deleteOrder(order.id)}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete Order
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                          Delivered
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="min-h-11 flex-1 touch-manipulation"
+                      disabled={
+                        order.status === 'shipped' ||
+                        order.status === 'delivered' ||
+                        updatingOrderId === order.id
+                      }
+                      onClick={() => updateOrderStatus(order.id, 'shipped')}
+                    >
+                      <Package className="w-4 h-4 mr-2" />
+                      Shipped
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="min-h-11 flex-1 border-red-300 text-red-500 touch-manipulation"
+                      onClick={() => setConfirmAction({ type: 'delete-order', id: order.id })}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+            })}
+            {orders.length === 0 && (
+              <p className="text-center text-gray-500 py-12">No orders yet.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-        {/* Add Product Tab */}
-        {activeTab === 'add-product' && (
+      <div className={activeTab === 'add-product' ? undefined : 'hidden'} aria-hidden={activeTab !== 'add-product'}>
+        <Suspense
+          fallback={
+            <div className="flex justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-premium-600" />
+            </div>
+          }
+        >
           <AddProduct />
-        )}
+        </Suspense>
       </div>
-    </div>
+
+      <AdminConfirmDialog
+        open={!!confirmAction}
+        title={confirmCopy.title}
+        description={confirmCopy.description}
+        destructive
+        loading={confirmLoading}
+        confirmLabel="Delete"
+        onConfirm={runConfirmAction}
+        onOpenChange={(open) => !open && !confirmLoading && setConfirmAction(null)}
+      />
+
+      <ProductEditDialog
+        product={editingProduct}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+      />
+    </AdminLayout>
   );
 };
 

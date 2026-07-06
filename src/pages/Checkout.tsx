@@ -6,8 +6,8 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { MapPin, User, Mail, Phone, Truck, AlertCircle, CheckCircle2, CreditCard, Wallet, Shield, Plus, Minus } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { collection, addDoc, doc, getDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { get, push, ref, set } from 'firebase/database';
+import { database } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { useCart } from '@/context/CartContext';
 import {
@@ -79,9 +79,9 @@ const Checkout = () => {
           }
 
           try {
-            const snap = await getDoc(doc(db, 'products', String(item.id)));
+            const snap = await get(ref(database, `products/${String(item.id)}`));
             if (snap.exists()) {
-              const imageUrl = imageUrlFromFirestoreProduct(snap.data());
+              const imageUrl = imageUrlFromFirestoreProduct(snap.val());
               if (imageUrl !== PLACEHOLDER_IMAGE) {
                 return normalizeCartItem({
                   ...normalized,
@@ -238,8 +238,15 @@ const Checkout = () => {
         orderNumber: 'AB' + Math.random().toString(36).substr(2, 9).toUpperCase()
       };
 
-      // Submit to Firebase
-      await addDoc(collection(db, 'orders'), orderData);
+      const orderRef = push(ref(database, 'orders'));
+      const orderId = orderRef.key || `order_${Date.now()}`;
+      const payload = {
+        ...orderData,
+        id: orderId,
+      };
+      console.log('RTDB path:', `orders/${orderId}`);
+      console.log('RTDB Payload:', JSON.stringify(payload, null, 2));
+      await set(orderRef, payload);
 
       toast({
         title: "Order Placed Successfully!",
@@ -267,13 +274,13 @@ const Checkout = () => {
 
   if (cartItems.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-yellow-50 to-white">
-        <div className="bg-white p-8 rounded-2xl shadow-xl border border-orange-200 text-center max-w-md mx-4">
-          <AlertCircle className="w-16 h-16 text-orange-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-orange-900 mb-2">Cart is empty</h2>
-          <p className="text-orange-600 mb-6">Please add a product to your cart before checking out.</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-yellow-50 to-white">
+        <div className="bg-white p-8 rounded-2xl shadow-xl border border-green-200 text-center max-w-md mx-4">
+          <AlertCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-green-900 mb-2">Cart is empty</h2>
+          <p className="text-green-700 mb-6">Please add a product to your cart before checking out.</p>
           <Link to="/shop">
-            <Button className="bg-orange-600 hover:bg-orange-700 text-white">
+            <Button className="bg-green-700 hover:bg-green-800 text-white">
               Continue Shopping
             </Button>
           </Link>
@@ -283,16 +290,16 @@ const Checkout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-orange-50 to-white relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 via-green-50 to-white relative overflow-hidden">
       {/* Animated Background */}
-      <div className="fixed inset-0 bg-gradient-to-br from-orange-50 via-orange-50 to-white animate-pulse-slow"></div>
+      <div className="fixed inset-0 bg-gradient-to-br from-green-50 via-green-50 to-white animate-pulse-slow"></div>
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10 pb-24 lg:pb-8 checkout-container">
         <div className="text-center mb-12">
-          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-orange-600 via-orange-500 to-orange-600 bg-clip-text text-transparent mb-6">
+          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-green-700 via-green-600 to-green-700 bg-clip-text text-transparent mb-6">
             চেকআউট
           </h1>
-          <p className="text-orange-700/80 text-xl font-medium max-w-2xl mx-auto">
+          <p className="text-green-800/80 text-xl font-medium max-w-2xl mx-auto">
             নিচের তথ্য পূরণ করে আপনার অর্ডারটি সম্পন্ন করুন।
           </p>
         </div>
@@ -301,9 +308,9 @@ const Checkout = () => {
           {/* Main Checkout Form */}
           <div className="lg:col-span-2 space-y-6">
             {/* Shipping Information */}
-            <Card className="bg-white/90 backdrop-blur-xl border border-orange-200/60">
+            <Card className="bg-white/90 backdrop-blur-xl border border-green-200/60">
               <CardHeader>
-                <CardTitle className="text-orange-900 flex items-center gap-2">
+                <CardTitle className="text-green-900 flex items-center gap-2">
                   <User className="w-5 h-5" />
                   আপনার তথ্য
                 </CardTitle>
@@ -311,31 +318,31 @@ const Checkout = () => {
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="firstName" className="text-orange-700">নামের প্রথম অংশ</Label>
+                    <Label htmlFor="firstName" className="text-green-800">নামের প্রথম অংশ</Label>
                     <Input
                       id="firstName"
                       name="firstName"
                       value={formData.firstName}
                       onChange={handleInputChange}
                       required
-                      className="border-orange-200 focus:border-orange-400"
+                      className="border-green-200 focus:border-green-400"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="lastName" className="text-orange-700">নামের শেষ অংশ</Label>
+                    <Label htmlFor="lastName" className="text-green-800">নামের শেষ অংশ</Label>
                     <Input
                       id="lastName"
                       name="lastName"
                       value={formData.lastName}
                       onChange={handleInputChange}
                       required
-                      className="border-orange-200 focus:border-orange-400"
+                      className="border-green-200 focus:border-green-400"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="email" className="text-orange-700">ইমেল</Label>
+                    <Label htmlFor="email" className="text-green-800">ইমেল</Label>
                     <Input
                       id="email"
                       name="email"
@@ -343,34 +350,34 @@ const Checkout = () => {
                       value={formData.email}
                       onChange={handleInputChange}
                       required
-                      className="border-orange-200 focus:border-orange-400"
+                      className="border-green-200 focus:border-green-400"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="phone" className="text-orange-700">ফোন</Label>
+                    <Label htmlFor="phone" className="text-green-800">ফোন</Label>
                     <Input
                       id="phone"
                       name="phone"
                       value={formData.phone}
                       onChange={handleInputChange}
                       required
-                      className="border-orange-200 focus:border-orange-400"
+                      className="border-green-200 focus:border-green-400"
                     />
                   </div>
                 </div>
                 <div>
-                  <Label htmlFor="address" className="text-orange-700">ঠিকানা</Label>
+                  <Label htmlFor="address" className="text-green-800">ঠিকানা</Label>
                   <Input
                     id="address"
                     name="address"
                     value={formData.address}
                     onChange={handleInputChange}
                     required
-                    className="border-orange-200 focus:border-orange-400"
+                    className="border-green-200 focus:border-green-400"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="deliveryArea" className="text-orange-700">ডেলিভারি এরিয়া</Label>
+                  <Label htmlFor="deliveryArea" className="text-green-800">ডেলিভারি এরিয়া</Label>
                   <Input
                     id="deliveryArea"
                     name="deliveryArea"
@@ -378,16 +385,16 @@ const Checkout = () => {
                     onChange={handleInputChange}
                     required
                     placeholder="উদাহরণ: ঢাকা, গুলশান"
-                    className="border-orange-200 focus:border-orange-400"
+                    className="border-green-200 focus:border-green-400"
                   />
                 </div>
               </CardContent>
             </Card>
 
             {/* Payment Method */}
-            <Card className="bg-white/90 backdrop-blur-xl border border-orange-200/60">
+            <Card className="bg-white/90 backdrop-blur-xl border border-green-200/60">
               <CardHeader>
-                <CardTitle className="text-orange-900 flex items-center gap-2">
+                <CardTitle className="text-green-900 flex items-center gap-2">
                   <CreditCard className="w-5 h-5" />
                   পেমেন্ট পদ্ধতি
                 </CardTitle>
@@ -396,24 +403,24 @@ const Checkout = () => {
                 <RadioGroup value={formData.paymentMethod} onValueChange={handlePaymentMethodChange}>
                   <div className="flex items-center space-x-2 mb-4">
                     <RadioGroupItem value="cod" id="cod" />
-                    <Label htmlFor="cod" className="text-orange-700">ক্যাশ অন ডেলিভারি</Label>
+                    <Label htmlFor="cod" className="text-green-800">ক্যাশ অন ডেলিভারি</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="bkash" id="bkash" />
-                    <Label htmlFor="bkash" className="text-orange-700">বিকাশ</Label>
+                    <Label htmlFor="bkash" className="text-green-800">বিকাশ</Label>
                   </div>
                 </RadioGroup>
                 
                 {formData.paymentMethod === 'bkash' && (
                   <div className="mt-4">
-                    <Label htmlFor="bkashNumber" className="text-orange-700">বিকাশ নম্বর</Label>
+                    <Label htmlFor="bkashNumber" className="text-green-800">বিকাশ নম্বর</Label>
                     <Input
                       id="bkashNumber"
                       name="bkashNumber"
                       value={formData.bkashNumber}
                       onChange={handleInputChange}
                       placeholder="০১XXXXXXXXX"
-                      className="border-orange-200 focus:border-orange-400"
+                      className="border-green-200 focus:border-green-400"
                     />
                   </div>
                 )}
@@ -421,7 +428,7 @@ const Checkout = () => {
             </Card>
 
             {/* Terms and Conditions */}
-            <Card className="bg-white/90 backdrop-blur-xl border border-orange-200/60">
+            <Card className="bg-white/90 backdrop-blur-xl border border-green-200/60">
               <CardContent className="pt-4">
                 <div className="flex items-start space-x-2">
                   <input
@@ -432,7 +439,7 @@ const Checkout = () => {
                     ref={termsRef}
                     className="mt-0.5"
                   />
-                  <Label htmlFor="terms" className="text-orange-700 text-sm">
+                  <Label htmlFor="terms" className="text-green-800 text-sm">
                     আমি নিশ্চিত হয়ে এবং শর্তাবলী মান্য করে অর্ডার করছি । 
                   </Label>
                 </div>
@@ -445,9 +452,9 @@ const Checkout = () => {
           
           {/* Order Summary - show first on mobile */}
           <div className="lg:col-span-1 order-first lg:order-last">
-            <Card className="bg-white/90 backdrop-blur-xl border border-orange-200/60 lg:sticky lg:top-24">
+            <Card className="bg-white/90 backdrop-blur-xl border border-green-200/60 lg:sticky lg:top-24">
               <CardHeader>
-                <CardTitle className="text-orange-900 flex items-center gap-2">
+                <CardTitle className="text-green-900 flex items-center gap-2">
                   <Truck className="w-5 h-5" />
                   আপনার অর্ডার
                 </CardTitle>
@@ -461,7 +468,7 @@ const Checkout = () => {
                     const originalPrice = Number(item.price);
                     
                     return (
-                      <div key={item.id} className="flex items-center space-x-3 p-3 bg-orange-50 rounded-lg">
+                      <div key={item.id} className="flex items-center space-x-3 p-3 bg-green-50 rounded-lg">
                         <div className="w-14 h-14 bg-white rounded-lg flex-shrink-0 overflow-hidden flex items-center justify-center">
                           <img
                             src={getDisplayImageUrl(item.mainImageUrl || getProductImage(item))}
@@ -480,7 +487,7 @@ const Checkout = () => {
                           />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-medium text-orange-900 truncate">{item.name}</h4>
+                          <h4 className="text-sm font-medium text-green-900 truncate">{item.name}</h4>
                           <div className="flex items-center gap-1 text-amber-500">
                             {Array.from({ length: 5 }).map((_, i) => (
                               <svg key={i} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
@@ -492,10 +499,10 @@ const Checkout = () => {
                             {hasDiscount ? (
                               <>
                                 <span className="text-xs text-gray-400 line-through">৳{new Intl.NumberFormat('en-US').format(originalPrice)}</span>
-                                <span className="text-sm font-bold text-orange-600">৳{new Intl.NumberFormat('en-US').format(price)}</span>
+                                <span className="text-sm font-bold text-green-700">৳{new Intl.NumberFormat('en-US').format(price)}</span>
                               </>
                             ) : (
-                              <span className="text-sm font-bold text-orange-600">৳{new Intl.NumberFormat('en-US').format(price)}</span>
+                              <span className="text-sm font-bold text-green-700">৳{new Intl.NumberFormat('en-US').format(price)}</span>
                             )}
                           </div>
                         </div>
@@ -505,17 +512,17 @@ const Checkout = () => {
                             variant="outline"
                             size="sm"
                             onClick={() => decreaseQty(item.id)}
-                            className="w-6 h-6 p-0 border-orange-300 text-orange-700"
+                            className="w-6 h-6 p-0 border-green-300 text-green-800"
                           >
                             <Minus className="w-3 h-3" />
                           </Button>
-                          <span className="text-sm font-medium text-orange-900 w-8 text-center">{item.quantity}</span>
+                          <span className="text-sm font-medium text-green-900 w-8 text-center">{item.quantity}</span>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
                             onClick={() => increaseQty(item.id)}
-                            className="w-6 h-6 p-0 border-orange-300 text-orange-700"
+                            className="w-6 h-6 p-0 border-green-300 text-green-800"
                           >
                             <Plus className="w-3 h-3" />
                           </Button>
@@ -526,17 +533,17 @@ const Checkout = () => {
                 </div>
 
                 {/* Order Summary */}
-                <div className="border-t border-orange-200 pt-4 space-y-2">
-                  <div className="flex justify-between text-orange-700">
+                <div className="border-t border-green-200 pt-4 space-y-2">
+                  <div className="flex justify-between text-green-800">
                     <span>মোট</span>
                     <span>৳{new Intl.NumberFormat('en-US').format(totalProductCost)}</span>
                   </div>
-                  <div className="flex justify-between text-orange-700">
+                  <div className="flex justify-between text-green-800">
                     <span>ডেলিভারি চার্জ</span>
                     <span>৳{new Intl.NumberFormat('en-US').format(deliveryCharge)}</span>
                   </div>
-                  <div className="border-t border-orange-200 pt-2">
-                    <div className="flex justify-between text-orange-900 font-bold text-lg">
+                  <div className="border-t border-green-200 pt-2">
+                    <div className="flex justify-between text-green-900 font-bold text-lg">
                       <span>সর্বমোট</span>
                       <span>৳{new Intl.NumberFormat('en-US').format(total)}</span>
                     </div>
@@ -548,7 +555,7 @@ const Checkout = () => {
                   <Button 
                     type="submit" 
                     disabled={isSubmitting || !agreedToTerms}
-                    className="w-full bg-gradient-to-r from-orange-600 to-orange-600 hover:from-orange-700 hover:to-orange-700 text-white py-4 text-lg rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                    className="w-full bg-gradient-to-r from-green-700 to-green-700 hover:from-green-800 hover:to-green-800 text-white py-4 text-lg rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
                   >
                     {isSubmitting ? (
                       <div className="flex items-center">
@@ -571,7 +578,7 @@ const Checkout = () => {
               <Button 
                 type="submit" 
                 disabled={isSubmitting || !agreedToTerms}
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 text-lg rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                className="w-full bg-green-700 hover:bg-green-800 text-white py-4 text-lg rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
               >
                 {isSubmitting ? (
                   <div className="flex items-center">
@@ -594,7 +601,7 @@ const Checkout = () => {
           <Button 
             type="submit" 
             disabled={isSubmitting || !agreedToTerms}
-            className="w-full bg-orange-600 hover:bg-orange-700 text-white py-4 text-lg rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+            className="w-full bg-green-700 hover:bg-green-800 text-white py-4 text-lg rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
             onClick={handleSubmit}
           >
             {isSubmitting ? (
@@ -616,4 +623,3 @@ const Checkout = () => {
 };
 
 export default Checkout;
-

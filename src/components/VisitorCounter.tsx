@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Eye } from 'lucide-react';
-import { doc, getDoc, onSnapshot, setDoc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { get, onValue, ref, set, update } from 'firebase/database';
+import { database } from '@/lib/firebase';
 
 const SESSION_KEY = 'ab-visitor-session-counted';
 const LOCAL_FALLBACK_KEY = 'ab-visitor-count-local';
@@ -10,17 +10,18 @@ const VisitorCounter = () => {
   const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
-    const ref = doc(db, 'stats', 'visitors');
+    const visitorRef = ref(database, 'settings/visitorCount');
     let unsub: (() => void) | undefined;
 
     const recordVisit = async () => {
       if (sessionStorage.getItem(SESSION_KEY)) return;
       try {
-        const snap = await getDoc(ref);
+        const snap = await get(visitorRef);
+        const currentCount = Number((snap.val() as { count?: number } | null)?.count || 0);
         if (!snap.exists()) {
-          await setDoc(ref, { count: 1 });
+          await set(visitorRef, { count: 1 });
         } else {
-          await updateDoc(ref, { count: increment(1) });
+          await update(visitorRef, { count: currentCount + 1 });
         }
         sessionStorage.setItem(SESSION_KEY, '1');
       } catch {
@@ -33,11 +34,12 @@ const VisitorCounter = () => {
     recordVisit();
 
     try {
-      unsub = onSnapshot(
-        ref,
+      unsub = onValue(
+        visitorRef,
         (snap) => {
-          if (snap.exists()) {
-            setCount(snap.data().count ?? 0);
+          const value = snap.val() as { count?: number } | null;
+          if (value) {
+            setCount(Number(value.count ?? 0));
           } else {
             setCount(0);
           }
@@ -59,9 +61,9 @@ const VisitorCounter = () => {
 
   return (
     <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground py-2">
-      <Eye className="w-3.5 h-3.5 text-brand-orange" />
+      <Eye className="w-3.5 h-3.5 text-brand-green" />
       <span>
-        <span className="font-semibold text-brand-orange">{display}</span> visitors
+        <span className="font-semibold text-brand-green">{display}</span> visitors
       </span>
     </div>
   );

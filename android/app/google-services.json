@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "879013081861",
+    "project_id": "nittobazarbd",
+    "storage_bucket": "nittobazarbd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:879013081861:android:484b497c48f072abcdfd6c",
+        "android_client_info": {
+          "package_name": "com.nittobazar.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtMBfb_9ivHVgVzl2nBiu_MZnbFTX-_Q0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

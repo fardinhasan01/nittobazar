@@ -25,7 +25,7 @@ const CategorySection = () => (
     <FadeInView>
       <div className="max-w-7xl mx-auto">
         <h2 className="text-lg font-bold text-brand-charcoal dark:text-white mb-1">Shop by Category</h2>
-        <p className="text-sm text-muted-foreground mb-6">Find your perfect gadget</p>
+        <p className="text-sm text-muted-foreground mb-6">আপনার প্রয়োজনীয় ক্যাটাগরি বেছে নিন</p>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-4">
           {categories.map((cat, i) => {
             const Icon = cat.icon;
@@ -41,8 +41,8 @@ const CategorySection = () => (
                   to={`/shop?category=${encodeURIComponent(cat.slug)}`}
                   className="flex flex-col items-center gap-2 group"
                 >
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white dark:bg-brand-charcoal shadow-md border border-orange-100 dark:border-orange-900/40 flex items-center justify-center transition-all duration-300 group-hover:shadow-lg group-hover:scale-105 group-hover:border-brand-orange/50">
-                    <Icon className="w-7 h-7 sm:w-8 sm:h-8 text-brand-orange transition-transform duration-300 group-hover:scale-110" />
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white dark:bg-brand-charcoal shadow-md border border-green-100 dark:border-green-900/40 flex items-center justify-center transition-all duration-300 group-hover:shadow-lg group-hover:scale-105 group-hover:border-brand-green/50">
+                    <Icon className="w-7 h-7 sm:w-8 sm:h-8 text-brand-green transition-transform duration-300 group-hover:scale-110" />
                   </div>
                   <span className="text-xs sm:text-sm font-medium text-center text-brand-charcoal dark:text-gray-200 line-clamp-2">
                     {cat.name}

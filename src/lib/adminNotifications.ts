@@ -1,16 +1,12 @@
 import { getApp } from 'firebase/app';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { get, ref, set, update } from 'firebase/database';
+import { database } from '@/lib/firebase';
 import {
   getDeviceId,
   loadNotificationSettings,
   type AdminNotificationSettings,
 } from '@/lib/adminNotificationSettings';
+import { isNativePushEnabled } from '@/lib/nativePushConfig';
 
 export interface FcmTokenEntry {
   token: string;
@@ -26,8 +22,8 @@ export async function saveAdminFcmToken(
 ): Promise<void> {
   const settings = loadNotificationSettings();
   const deviceId = getDeviceId();
-  const ref = doc(db, 'adminFcmTokens', userId);
-  const snap = await getDoc(ref);
+  const adminRef = ref(database, `admins/${userId}`);
+  const snap = await get(adminRef);
 
   const entry: FcmTokenEntry = {
     token,
@@ -37,66 +33,72 @@ export async function saveAdminFcmToken(
   };
 
   if (!snap.exists()) {
-    await setDoc(ref, {
-      tokens: [entry],
+    await set(adminRef, {
+      tokens: {
+        [deviceId]: entry,
+      },
       settings: {
         enabled: settings.enabled,
         sound: settings.sound,
         vibration: settings.vibration,
       },
-      updatedAt: serverTimestamp(),
+      updatedAt: Date.now(),
     });
     return;
   }
 
-  const existing: FcmTokenEntry[] = snap.data()?.tokens || [];
-  const withoutDevice = existing.filter((e) => {
-    const t = typeof e === 'string' ? null : e;
-    if (typeof e === 'string') return true;
-    return t?.deviceId !== deviceId;
-  });
-
-  const normalized = withoutDevice
-    .map((e) => (typeof e === 'string' ? { token: e, deviceId: '', platform: 'legacy', updatedAt: '' } : e))
-    .filter((e) => e.token !== token);
-
-  await setDoc(
-    ref,
-    {
-      tokens: [...normalized, entry],
+  const existingTokens = (snap.val()?.tokens || {}) as Record<string, FcmTokenEntry>;
+  const duplicateDevice = Object.values(existingTokens).find((e) => e.token === token && e.deviceId === deviceId);
+  if (duplicateDevice) {
+    await update(adminRef, {
       settings: {
         enabled: settings.enabled,
         sound: settings.sound,
         vibration: settings.vibration,
       },
-      updatedAt: serverTimestamp(),
+      updatedAt: Date.now(),
+    });
+    return;
+  }
+
+  await update(adminRef, {
+    [`tokens/${deviceId}`]: entry,
+    settings: {
+      enabled: settings.enabled,
+      sound: settings.sound,
+      vibration: settings.vibration,
     },
-    { merge: true }
-  );
+    updatedAt: Date.now(),
+  });
 }
 
 export async function syncNotificationSettingsToFirestore(
   userId: string,
   settings: AdminNotificationSettings
 ): Promise<void> {
-  const ref = doc(db, 'adminFcmTokens', userId);
-  await setDoc(
-    ref,
-    {
+  const adminRef = ref(database, `admins/${userId}`);
+  await update(adminRef, {
       settings: {
         enabled: settings.enabled,
         sound: settings.sound,
         vibration: settings.vibration,
       },
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+      updatedAt: Date.now(),
+  });
 }
 
 export async function registerWebFcmToken(userId: string): Promise<string | null> {
   const settings = loadNotificationSettings();
   if (!settings.enabled) return null;
+
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (Capacitor.isNativePlatform()) {
+      return null;
+    }
+  } catch {
+    // not in capacitor
+  }
 
   if (!('Notification' in window) || !('serviceWorker' in navigator)) {
     return null;
@@ -111,7 +113,7 @@ export async function registerWebFcmToken(userId: string): Promise<string | null
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return null;
 
-  const { isSupported, getMessaging, getToken, onMessage } = await import('firebase/messaging');
+  const { isSupported, getMessaging, getToken } = await import('firebase/messaging');
 
   if (!(await isSupported())) return null;
 
@@ -149,6 +151,13 @@ export async function initNativePushListeners(
     onForegroundOrder?: (orderId: string, data?: Record<string, string>) => void;
   }
 ): Promise<void> {
+  if (!isNativePushEnabled()) {
+    console.info(
+      '[FCM] Native push disabled. In-app order alerts still work. Set VITE_NATIVE_PUSH_ENABLED=true after adding google-services.json from Firebase.'
+    );
+    return;
+  }
+
   try {
     const { Capacitor } = await import('@capacitor/core');
     if (!Capacitor.isNativePlatform()) return;
@@ -168,12 +177,16 @@ export async function initNativePushListeners(
     });
 
     await registerNativePushToken(userId);
-  } catch {
-    // Capacitor not configured on this build
+  } catch (err) {
+    console.warn('[FCM] Native push listeners failed (non-fatal):', err);
   }
 }
 
 export async function registerNativePushToken(userId: string): Promise<string | null> {
+  if (!isNativePushEnabled()) {
+    return null;
+  }
+
   try {
     const { Capacitor } = await import('@capacitor/core');
     if (!Capacitor.isNativePlatform()) return null;
@@ -184,17 +197,38 @@ export async function registerNativePushToken(userId: string): Promise<string | 
     if (perm.receive !== 'granted') return null;
 
     return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value: string | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
       void PushNotifications.addListener('registration', async (t) => {
         if (t.value) {
-          await saveAdminFcmToken(userId, t.value, Capacitor.getPlatform());
-          resolve(t.value);
+          try {
+            await saveAdminFcmToken(userId, t.value, Capacitor.getPlatform());
+          } catch (e) {
+            console.warn('[FCM] Failed to save token:', e);
+          }
+          finish(t.value);
         }
       });
-      void PushNotifications.addListener('registrationError', () => resolve(null));
-      void PushNotifications.register();
-      setTimeout(() => resolve(null), 8000);
+
+      void PushNotifications.addListener('registrationError', (err) => {
+        console.warn('[FCM] Push registration error (non-fatal):', err);
+        finish(null);
+      });
+
+      void PushNotifications.register().catch((err) => {
+        console.warn('[FCM] PushNotifications.register failed (non-fatal):', err);
+        finish(null);
+      });
+
+      setTimeout(() => finish(null), 8000);
     });
-  } catch {
+  } catch (err) {
+    console.warn('[FCM] Native push registration failed (non-fatal):', err);
     return null;
   }
 }

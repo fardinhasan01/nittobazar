@@ -1,6 +1,6 @@
 {
-  "name": "ab-gadgets-functions",
-  "description": "Cloud Functions for AB GADGETS admin order notifications",
+  "name": "nittobazar-functions",
+  "description": "Cloud Functions for নিত্য বাজার admin order notifications",
   "main": "index.js",
   "type": "commonjs",
   "engines": {

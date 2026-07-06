@@ -3,5 +3,5 @@
   <rect x="50" y="45" width="100" height="75" rx="8" fill="#e5e5e5" stroke="#d4d4d4" stroke-width="2"/>
   <circle cx="75" cy="70" r="10" fill="#d4d4d4"/>
   <path d="M55 105 L85 80 L105 95 L145 65 L155 105 Z" fill="#d4d4d4"/>
-  <text x="100" y="145" text-anchor="middle" fill="#a3a3a3" font-family="system-ui,sans-serif" font-size="12">AB Gadgets</text>
+  <text x="100" y="145" text-anchor="middle" fill="#a3a3a3" font-family="system-ui,sans-serif" font-size="12">নিত্য বাজার</text>
 </svg>

@@ -22,23 +22,24 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({
   <Card className="bg-white/80 backdrop-blur-lg border border-premium-200/30">
     <CardHeader>
       <CardTitle className="text-premium-800 flex items-center gap-2 text-lg">
-        <Bell className="w-5 h-5 text-orange-600" />
+        <Bell className="w-5 h-5 text-green-700" />
         Notification Settings
       </CardTitle>
     </CardHeader>
     <CardContent className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <Label htmlFor="notif-enabled" className="text-gray-700">
+      <div className="flex items-center justify-between gap-4 min-h-12 py-1">
+        <Label htmlFor="notif-enabled" className="text-gray-700 flex-1">
           Enable order notifications
         </Label>
         <Switch
           id="notif-enabled"
           checked={settings.enabled}
           onCheckedChange={(enabled) => onChange({ ...settings, enabled })}
+          className="shrink-0 scale-110"
         />
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <Label htmlFor="notif-sound" className="text-gray-700 flex items-center gap-2">
+      <div className="flex items-center justify-between gap-4 min-h-12 py-1">
+        <Label htmlFor="notif-sound" className="text-gray-700 flex items-center gap-2 flex-1">
           <Volume2 className="w-4 h-4" />
           Sound
         </Label>
@@ -47,10 +48,11 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({
           checked={settings.sound}
           disabled={!settings.enabled}
           onCheckedChange={(sound) => onChange({ ...settings, sound })}
+          className="shrink-0 scale-110"
         />
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <Label htmlFor="notif-vibrate" className="text-gray-700 flex items-center gap-2">
+      <div className="flex items-center justify-between gap-4 min-h-12 py-1">
+        <Label htmlFor="notif-vibrate" className="text-gray-700 flex items-center gap-2 flex-1">
           <Smartphone className="w-4 h-4" />
           Vibration
         </Label>
@@ -59,12 +61,13 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({
           checked={settings.vibration}
           disabled={!settings.enabled}
           onCheckedChange={(vibration) => onChange({ ...settings, vibration })}
+          className="shrink-0 scale-110"
         />
       </div>
       <Button
         type="button"
         variant="outline"
-        className="w-full border-orange-300 text-orange-700 hover:bg-orange-50"
+        className="w-full min-h-12 touch-manipulation border-green-300 text-green-800 hover:bg-green-50"
         onClick={onTest}
         disabled={!settings.enabled}
       >
@@ -73,7 +76,7 @@ const NotificationSettings: React.FC<NotificationSettingsProps> = ({
       <p className="text-xs text-gray-500">
         {fcmReady
           ? 'Push notifications are registered for this device.'
-          : 'Allow notifications in your browser and set VITE_FIREBASE_VAPID_KEY to enable push when the app is closed.'}
+          : 'Web: allow notifications and set VITE_FIREBASE_VAPID_KEY. Android APK: add google-services.json from Firebase and VITE_NATIVE_PUSH_ENABLED=true. In-app order alerts always work on the dashboard.'}
       </p>
     </CardContent>
   </Card>

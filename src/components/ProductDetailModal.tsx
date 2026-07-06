@@ -207,7 +207,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 pb-24 md:pb-6 bg-white dark:bg-brand-charcoal border-orange-100 dark:border-orange-900/30">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 pb-24 md:pb-6 bg-white dark:bg-brand-charcoal border-green-100 dark:border-green-900/30">
         <div className="p-6 overflow-y-auto max-h-[85vh]">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
@@ -234,7 +234,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Product Images */}
           <div className="space-y-4">
-            <div className="aspect-square bg-brand-gray dark:bg-white/5 rounded-2xl overflow-hidden border border-orange-100 dark:border-orange-900/30 shadow-lg">
+            <div className="aspect-square bg-brand-gray dark:bg-white/5 rounded-2xl overflow-hidden border border-green-100 dark:border-green-900/30 shadow-lg">
               <img
                 src={
                   product.mainImageUrl ||
@@ -311,7 +311,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <Button
                 onClick={() => handleDirectOrder(product)}
                 disabled={!product.inStock}
-                className="w-full bg-brand-orange hover:bg-[#e55f00] text-white font-semibold rounded-xl h-11"
+                className="w-full bg-brand-green hover:bg-[#15803d] text-white font-semibold rounded-xl h-11"
               >
                 <Sparkles className="w-4 h-4 mr-2" />
                 Buy Now
@@ -320,7 +320,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 onClick={() => handleAddToCart(product)}
                 disabled={!product.inStock}
                 variant="outline"
-                className="w-full border-brand-orange/40 text-brand-orange rounded-xl h-11"
+                className="w-full border-brand-green/40 text-brand-green rounded-xl h-11"
               >
                 Add to Cart
               </Button>
@@ -446,14 +446,14 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-[60] glass-nav border-t p-3 flex items-center gap-3 safe-bottom">
           <div className="shrink-0">
             <p className="text-xs text-muted-foreground">Price</p>
-            <p className="text-lg font-bold text-brand-orange">
+            <p className="text-lg font-bold text-brand-green">
               ৳{toBengaliNumber(priceToShow)}
             </p>
           </div>
           <Button
             onClick={() => handleDirectOrder(product)}
             disabled={!product.inStock}
-            className="flex-1 bg-brand-orange hover:bg-[#e55f00] text-white font-semibold rounded-xl h-11"
+            className="flex-1 bg-brand-green hover:bg-[#15803d] text-white font-semibold rounded-xl h-11"
           >
             Buy Now
           </Button>
@@ -461,7 +461,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             onClick={() => handleAddToCart(product)}
             disabled={!product.inStock}
             variant="outline"
-            className="flex-1 border-brand-orange text-brand-orange rounded-xl h-11"
+            className="flex-1 border-brand-green text-brand-green rounded-xl h-11"
           >
             Cart
           </Button>

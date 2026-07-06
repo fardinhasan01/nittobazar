@@ -73,7 +73,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
       className="h-full"
     >
       <Card
-        className="group relative h-full overflow-hidden bg-white dark:bg-brand-charcoal border border-orange-100/80 dark:border-orange-900/30 rounded-2xl shadow-sm hover:shadow-xl hover:shadow-orange-500/10 transition-shadow duration-300 cursor-pointer"
+        className="group relative h-full overflow-hidden bg-white dark:bg-brand-charcoal border border-green-100/80 dark:border-green-900/30 rounded-2xl shadow-sm hover:shadow-xl hover:shadow-green-600/10 transition-shadow duration-300 cursor-pointer"
         onClick={handleCardClick}
       >
         <div className="relative overflow-hidden bg-brand-gray dark:bg-white/5 rounded-t-2xl aspect-square">
@@ -89,7 +89,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             }}
           />
           {hasDiscount && (
-            <span className="absolute top-2 left-2 bg-brand-orange text-white text-[10px] font-bold px-2 py-1 rounded-lg">
+            <span className="absolute top-2 left-2 bg-brand-green text-white text-[10px] font-bold px-2 py-1 rounded-lg">
               -{discountPercentage}%
             </span>
           )}
@@ -109,7 +109,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
             aria-label={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
           >
             <Heart
-              className={`w-4 h-4 ${wishlisted ? 'fill-brand-orange text-brand-orange' : 'text-gray-400'}`}
+              className={`w-4 h-4 ${wishlisted ? 'fill-brand-green text-brand-green' : 'text-gray-400'}`}
             />
           </button>
           <div className="absolute bottom-2 right-2 flex items-center gap-0.5 bg-white/90 dark:bg-brand-charcoal/90 rounded-lg px-2 py-0.5 text-xs font-semibold shadow-sm">
@@ -126,11 +126,11 @@ const ProductCard: React.FC<ProductCardProps> = ({
         </div>
 
         <CardContent className="p-3 space-y-2">
-          <h3 className="text-sm font-semibold line-clamp-2 min-h-[2.5rem] text-brand-charcoal dark:text-white group-hover:text-brand-orange transition-colors">
+          <h3 className="text-sm font-semibold line-clamp-2 min-h-[2.5rem] text-brand-charcoal dark:text-white group-hover:text-brand-green transition-colors">
             {product.name}
           </h3>
           <div className="flex items-baseline gap-2">
-            <span className="text-base font-bold text-brand-orange">৳{priceToShow.toLocaleString()}</span>
+            <span className="text-base font-bold text-brand-green">৳{priceToShow.toLocaleString()}</span>
             {hasDiscount && (
               <span className="text-xs text-muted-foreground line-through">
                 ৳{originalPrice.toLocaleString()}
@@ -144,7 +144,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 handleDirectOrder(product);
               }}
               disabled={!product.inStock}
-              className="flex-1 h-9 bg-brand-orange hover:bg-[#e55f00] text-white text-xs font-semibold rounded-xl transition-all duration-300"
+              className="flex-1 h-9 bg-brand-green hover:bg-[#15803d] text-white text-xs font-semibold rounded-xl transition-all duration-300"
             >
               <Zap className="w-3 h-3 mr-1" />
               Buy
@@ -157,7 +157,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
               disabled={!product.inStock}
               variant="outline"
               size="icon"
-              className="h-9 w-9 shrink-0 rounded-xl border-brand-orange/40 text-brand-orange hover:bg-orange-50 dark:hover:bg-orange-950/30"
+              className="h-9 w-9 shrink-0 rounded-xl border-brand-green/40 text-brand-green hover:bg-green-50 dark:hover:bg-green-950/30"
               aria-label="Add to cart"
             >
               <ShoppingCart className="w-4 h-4" />

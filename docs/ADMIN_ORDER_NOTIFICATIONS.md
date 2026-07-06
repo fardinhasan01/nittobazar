@@ -1,6 +1,6 @@
 # Admin Order Notifications (FCM)
 
-Instant push notifications when a customer places an order on AB GADGETS.
+Instant push notifications when a customer places an order on নিত্য বাজার.
 
 ## Architecture
 

@@ -53,13 +53,13 @@ const Header = () => {
         <div className="flex items-center justify-between h-14 md:h-16 gap-3">
           <Link to="/" className="flex items-center gap-2 shrink-0 group">
             <img
-              src="/lovable-uploads/d3afd300-289e-412e-ab42-87bdeed21cda.png"
-              alt="AB Gadgets"
+              src="/logo.png"
+              alt="নিত্য বাজার"
               className="w-9 h-9 md:w-10 md:h-10 rounded-xl shadow-sm group-hover:scale-105 transition-transform duration-300"
             />
             <div className="hidden sm:block">
               <span className="text-sm md:text-base font-bold text-brand-charcoal dark:text-white leading-none">
-                AB GADGETS
+                নিত্য বাজার
               </span>
             </div>
           </Link>
@@ -73,8 +73,8 @@ const Header = () => {
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search gadgets..."
-                className="pl-10 h-10 rounded-2xl bg-brand-gray dark:bg-white/10 border-0 focus-visible:ring-brand-orange"
+                placeholder="পণ্য খুঁজুন..."
+                className="pl-10 h-10 rounded-2xl bg-brand-gray dark:bg-white/10 border-0 focus-visible:ring-brand-green"
               />
             </div>
           </form>
@@ -104,7 +104,7 @@ const Header = () => {
               <Button variant="ghost" size="icon" className="rounded-xl h-10 w-10 relative" aria-label="Wishlist">
                 <Heart className="w-5 h-5" />
                 {wishlistCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-brand-orange text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  <span className="absolute -top-0.5 -right-0.5 bg-brand-green text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                     {wishlistCount}
                   </span>
                 )}
@@ -115,7 +115,7 @@ const Header = () => {
               <Button variant="ghost" size="icon" className="rounded-xl h-10 w-10 relative" aria-label="Cart">
                 <ShoppingCart className="w-5 h-5" />
                 {cartCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-brand-orange text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  <span className="absolute -top-0.5 -right-0.5 bg-brand-green text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                     {cartCount}
                   </span>
                 )}
@@ -143,12 +143,12 @@ const Header = () => {
               <SheetContent side="right" className="w-[280px]">
                 <nav className="flex flex-col gap-1 mt-8">
                   {[
-                    { to: '/', label: 'Home' },
-                    { to: '/shop', label: 'Shop' },
-                    { to: '/categories', label: 'Categories' },
-                    { to: '/cart', label: 'Cart' },
-                    { to: '/account', label: 'My Account' },
-                    { to: '/admin/login', label: 'Admin Login' },
+                    { to: '/', label: 'হোম' },
+                    { to: '/shop', label: 'শপ' },
+                    { to: '/categories', label: 'ক্যাটাগরি' },
+                    { to: '/cart', label: 'কার্ট' },
+                    { to: '/account', label: 'অ্যাকাউন্ট' },
+                    { to: '/admin/login', label: 'অ্যাডমিন লগইন' },
                   ].map((item) => (
                     <Link
                       key={item.to}
@@ -164,7 +164,7 @@ const Header = () => {
                     className="px-4 py-3 rounded-xl font-medium text-left hover:bg-brand-gray dark:hover:bg-white/10 flex items-center gap-2"
                   >
                     {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-                    {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                    {theme === 'dark' ? 'লাইট মোড' : 'ডার্ক মোড'}
                   </button>
                 </nav>
               </SheetContent>
@@ -179,7 +179,7 @@ const Header = () => {
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search gadgets..."
+                placeholder="পণ্য খুঁজুন..."
                 className="pl-10 h-11 rounded-2xl bg-brand-gray dark:bg-white/10"
                 autoFocus
               />

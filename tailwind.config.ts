@@ -122,7 +122,7 @@ export default {
 					950: '#020617',
 				},
 				brand: {
-					orange: '#FF6B00',
+					green: '#16A34A',
 					white: '#FFFFFF',
 					gray: '#F5F5F5',
 					charcoal: '#1A1A1A',

@@ -51,10 +51,10 @@ const Account = () => {
           {savedOrders.length === 0 ? (
             <Card className="glass-card border-0">
               <CardContent className="p-8 text-center">
-                <Package className="w-10 h-10 text-brand-orange mx-auto mb-3" />
+                <Package className="w-10 h-10 text-brand-green mx-auto mb-3" />
                 <p className="text-muted-foreground text-sm mb-4">No orders yet</p>
                 <Link to="/shop">
-                  <Button className="bg-brand-orange hover:bg-[#e55f00] rounded-xl">Shop Now</Button>
+                  <Button className="bg-brand-green hover:bg-[#15803d] rounded-xl">Shop Now</Button>
                 </Link>
               </CardContent>
             </Card>
@@ -66,7 +66,7 @@ const Account = () => {
                     <p className="font-semibold text-sm">Order #{order.id?.slice?.(0, 8) || i + 1}</p>
                     <p className="text-xs text-muted-foreground">{order.date}</p>
                   </div>
-                  <span className="font-bold text-brand-orange">৳{order.total}</span>
+                  <span className="font-bold text-brand-green">৳{order.total}</span>
                 </CardContent>
               </Card>
             ))
@@ -77,7 +77,7 @@ const Account = () => {
           {wishlist.length === 0 ? (
             <Card className="glass-card border-0">
               <CardContent className="p-8 text-center">
-                <Heart className="w-10 h-10 text-brand-orange mx-auto mb-3" />
+                <Heart className="w-10 h-10 text-brand-green mx-auto mb-3" />
                 <p className="text-muted-foreground text-sm">Your wishlist is empty</p>
               </CardContent>
             </Card>
@@ -92,7 +92,7 @@ const Account = () => {
                   />
                   <div className="flex-1 min-w-0">
                     <p className="font-medium text-sm line-clamp-2">{item.name}</p>
-                    <p className="text-brand-orange font-bold text-sm">
+                    <p className="text-brand-green font-bold text-sm">
                       ৳{(item.offerPrice && item.offerPrice < (item.price || 0)
                         ? item.offerPrice
                         : item.price || 0
@@ -116,7 +116,7 @@ const Account = () => {
         <TabsContent value="addresses" className="mt-4">
           <Card className="glass-card border-0">
             <CardContent className="p-6 text-center text-sm text-muted-foreground">
-              <MapPin className="w-8 h-8 text-brand-orange mx-auto mb-2" />
+              <MapPin className="w-8 h-8 text-brand-green mx-auto mb-2" />
               Save addresses at checkout for faster orders next time.
             </CardContent>
           </Card>

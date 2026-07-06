@@ -32,8 +32,8 @@ const OrderSuccess = () => {
       <nav className="bg-black/30 backdrop-blur-lg border-b border-blue-500/20 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <Link to="/" className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-              AB GADGETS
+            <Link to="/" className="text-2xl font-bold bg-gradient-to-r from-green-500 to-emerald-400 bg-clip-text text-transparent">
+              নিত্য বাজার
             </Link>
           </div>
         </div>
@@ -45,7 +45,7 @@ const OrderSuccess = () => {
             <CheckCircle className="w-12 h-12 text-white" />
           </div>
           <h1 className="text-4xl font-bold mb-4">
-            <span className="bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-green-500 to-emerald-400 bg-clip-text text-transparent">
               Order Confirmed!
             </span>
           </h1>
@@ -152,7 +152,7 @@ const OrderSuccess = () => {
                       <h3 className="text-white font-semibold">{item.name}</h3>
                       <p className="text-gray-400">Qty: {item.quantity}</p>
                     </div>
-                    <span className="text-blue-400 font-bold">৳{new Intl.NumberFormat('en-US').format(price * item.quantity)}</span>
+                    <span className="text-green-400 font-bold">৳{new Intl.NumberFormat('en-US').format(price * item.quantity)}</span>
                   </div>
                 );
               })}
@@ -163,7 +163,7 @@ const OrderSuccess = () => {
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link to="/">
-            <Button className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300">
+            <Button className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-8 py-3 rounded-lg font-semibold transition-all duration-300">
               Continue Shopping
             </Button>
           </Link>
@@ -172,7 +172,7 @@ const OrderSuccess = () => {
         {/* Contact Info */}
         <div className="text-center mt-12 p-6 bg-gray-800/20 rounded-lg">
           <p className="text-gray-400 mb-2">Need help with your order?</p>
-          <p className="text-white">Contact us at <span className="text-blue-400"> AB Gadgets FB page</span> or call <span className="text-blue-400">📌 WhatsApp: 01706003435</span></p>
+          <p className="text-white">Contact us at <span className="text-green-400"> নিত্য বাজার ফেসবুক পেজ</span> or call <span className="text-green-400">📌 WhatsApp: 01706003435</span></p>
         </div>
       </div>
     </div>

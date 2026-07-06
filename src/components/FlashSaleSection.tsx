@@ -27,17 +27,17 @@ const FlashSaleSection = () => {
   return (
     <section className="mx-4 my-6">
       <FadeInView>
-        <div className="max-w-7xl mx-auto rounded-2xl bg-gradient-to-r from-brand-orange to-[#ff8534] p-5 sm:p-6 text-white shadow-xl shadow-orange-500/20">
+        <div className="max-w-7xl mx-auto rounded-2xl bg-gradient-to-r from-brand-green to-[#22c55e] p-5 sm:p-6 text-white shadow-xl shadow-green-600/20">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Flame className="w-5 h-5" />
-                <span className="text-xs font-bold uppercase tracking-wider opacity-90">Flash Sale</span>
+                <span className="text-xs font-bold uppercase tracking-wider opacity-90">ফ্ল্যাশ সেল</span>
               </div>
-              <h2 className="text-xl sm:text-2xl font-bold">Limited Time Offers</h2>
+              <h2 className="text-xl sm:text-2xl font-bold">সীমিত সময়ের অফার</h2>
               <p className="text-sm text-white/85 mt-1 flex items-center gap-1">
                 <span className="inline-block w-2 h-2 rounded-full bg-red-300 animate-pulse" />
-                Only a few items left — hurry!
+                হাতে গোনা কয়েকটি স্টক বাকি আছে — দ্রুত অর্ডার করুন!
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -50,8 +50,8 @@ const FlashSaleSection = () => {
                 <span>{pad(time.s)}</span>
               </div>
               <Link to="/shop">
-                <Button className="bg-white text-brand-orange hover:bg-brand-gray font-semibold rounded-xl h-10 px-5 shadow-md transition-transform duration-300 hover:scale-[1.02]">
-                  Shop Now
+                <Button className="bg-white text-brand-green hover:bg-brand-gray font-semibold rounded-xl h-10 px-5 shadow-md transition-transform duration-300 hover:scale-[1.02]">
+                  এখনই অর্ডার করুন
                 </Button>
               </Link>
             </div>
