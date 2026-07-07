@@ -1,28 +1,62 @@
-import React from 'react';
-import { MessageCircle } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import React from "react";
+import { MessageCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-const FloatingContactButton = () => {
-  const messengerLink = "https://www.facebook.com/profile.php?id=100092730792089";
+const FACEBOOK_URL =
+  "https://www.facebook.com/profile.php?id=61587970271939";
 
+const FloatingContactButton: React.FC = () => {
   return (
-    <Tooltip>
+    <Tooltip delayDuration={200}>
       <TooltipTrigger asChild>
         <a
-          href={messengerLink}
+          href={FACEBOOK_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="fixed bottom-24 left-4 z-40 bg-brand-green text-white p-3.5 rounded-full shadow-xl shadow-green-500/30 transition-all duration-300 hover:scale-105 md:bottom-8 md:left-auto md:right-4"
           aria-label="Message us on Facebook"
+          title="Message us on Facebook"
+          className="
+            fixed
+            bottom-24
+            left-4
+            md:bottom-8
+            md:right-4
+            md:left-auto
+            z-50
+            flex
+            h-14
+            w-14
+            items-center
+            justify-center
+            rounded-full
+            bg-brand-green
+            text-white
+            shadow-xl
+            shadow-green-500/30
+            transition-all
+            duration-300
+            hover:scale-110
+            hover:shadow-green-500/50
+            active:scale-95
+            focus:outline-none
+            focus:ring-2
+            focus:ring-brand-green
+            focus:ring-offset-2
+          "
         >
-          <MessageCircle className="w-6 h-6" />
+          <MessageCircle className="h-6 w-6" strokeWidth={2.2} />
         </a>
       </TooltipTrigger>
-      <TooltipContent>
+
+      <TooltipContent side="top">
         <p>Message us on Facebook</p>
       </TooltipContent>
     </Tooltip>
   );
 };
 
-export default FloatingContactButton; 
+export default FloatingContactButton;
